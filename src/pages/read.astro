@@ -140,7 +140,7 @@ import '../styles/tokens.css';
   }
 
   // ── DOM ──
-  const tocPanel = document.getElementById('toc-panel')!;
+  const tocPanel = document.getElementById('toc-panel') as HTMLElement;
   const tocTree = document.getElementById('toc-tree')!;
   const tocNav = document.getElementById('toc-nav')!;
   const tocCount = document.getElementById('toc-count')!;
@@ -151,6 +151,14 @@ import '../styles/tokens.css';
   const topbarFill = document.getElementById('read-topbar-fill')!;
   const topbarPos = document.getElementById('read-topbar-pos')!;
   const styleBookName = document.getElementById('style-book-name')!;
+  const tocSearchInput = document.getElementById('toc-search-input') as HTMLInputElement;
+  const tocSearchCount = document.getElementById('toc-search-count')!;
+  const tocPagination = document.getElementById('toc-pagination')!;
+  const tocPageInfo = document.getElementById('toc-page-info')!;
+  const tocEmpty = document.getElementById('toc-empty')!;
+  const tocRecent = document.getElementById('toc-recent')!;
+  const tocRecentList = document.getElementById('toc-recent-list')!;
+  const ctxMenu = document.getElementById('toc-context-menu')!;
 
   // 浮动工具栏
   const floatBar = document.createElement('div');
@@ -171,6 +179,24 @@ import '../styles/tokens.css';
   let currentIndex = 0;
   let bookTitle = '';
   let currentStyle: Omit<BookStyle, 'bookId'> = { ...DEFAULT_STYLE };
+  let tocEntries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof tocEntries }> = [];
+  let tocFlat: Array<{ chapterIndex: number; title: string; depth: number }> = [];
+  let favorites: Set<number> = new Set();
+
+  // ── localStorage keys ──
+  const LS = {
+    scrollMode: `toc-scroll-mode:${bookId}`,
+    pageSize: `toc-page-size:${bookId}`,
+    favorites: `toc-fav:${bookId}`,
+    collapsed: `toc-collapsed:${bookId}`,
+    recent: `toc-recent:${bookId}`,
+    scrollTop: `toc-scroll:${bookId}`,
+  };
+
+  // ── Scroll mode ──
+  let scrollMode: 'normal' | 'page' = (localStorage.getItem(LS.scrollMode) as 'normal' | 'page') || 'normal';
+  let pageSize: number = Number(localStorage.getItem(LS.pageSize)) || 50;
+  let currentPage = 0;
 
   // ── Toast ──
   function showToast(msg: string, type: 'info' | 'error' | 'success' = 'info'): void {
@@ -185,332 +211,624 @@ import '../styles/tokens.css';
     }, 3000);
   }
 
-  // ── 初始化 ──
-  async function init(): Promise<void> {
-    const book = await getBook(bookId!);
-    if (!book) {
-      showToast('书籍不存在', 'error');
-      setTimeout(() => { location.href = '/reader/'; }, 2000);
-      return;
-    }
+  // ── Favorites ──
+  function loadFavorites(): void {
+    try { favorites = new Set(JSON.parse(localStorage.getItem(LS.favorites) || '[]')); } catch { favorites = new Set(); }
+  }
+  function saveFavorites(): void { localStorage.setItem(LS.favorites, JSON.stringify([...favorites])); }
 
-    bookTitle = book.customTitle || book.title;
-    document.title = `${bookTitle} — Reader`;
-    topbarTitle.textContent = bookTitle;
-    styleBookName.textContent = `《${bookTitle}》的样式`;
-
-    // 加载样式
-    currentStyle = await updateStyleFromSaved();
-    syncStyleUI(currentStyle);
-
-    // 加载章节
-    chapters = await getChapters(bookId!);
-    if (chapters.length === 0) {
-      contentEmpty.innerHTML = '<p>此书无内容 — 可能是 EPUB 解析失败</p><p style="font-size:12px;color:var(--text-muted);margin-top:var(--space-2)">请返回书架重新导入</p>';
-      return;
-    }
-
-    // 检查是否所有章节内容为空
-    const emptyChapters = chapters.filter(c => !c.content.trim());
-    if (emptyChapters.length === chapters.length) {
-      contentEmpty.innerHTML = '<p>所有章节内容为空</p><p style="font-size:12px;color:var(--text-muted);margin-top:var(--space-2)">EPUB 解析未能提取正文，请尝试重新导入</p>';
-      return;
-    }
-    if (emptyChapters.length > 0) {
-      console.warn(`${emptyChapters.length}/${chapters.length} 章节内容为空`);
-    }
-
-    // 恢复 TOC 结构
-    let tocEntries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof tocEntries }> = [];
-    try {
-      if (book.tocJson) {
-        tocEntries = JSON.parse(book.tocJson);
-      }
-    } catch { /* ignore corrupted toc json */ }
-
-    // 如果无 TOC 结构，从章节直接生成
-    if (tocEntries.length === 0) {
-      tocEntries = chapters.map((ch, i) => ({
-        chapterIndex: i,
-        title: ch.title,
-        depth: ch.depth,
-      }));
-    }
-
-    tocCount.textContent = String(chapters.length);
-
-    // 构建层级化 TOC DOM
-    renderToc(tocEntries, currentIndex);
-
-    // 恢复进度
-    if (book.lastChapterId) {
-      const idx = chapters.findIndex(c => c.id === book.lastChapterId);
-      if (idx >= 0) {
-        currentIndex = idx;
-        renderChapter(currentIndex);
-        if (book.lastScrollY) {
-          requestAnimationFrame(() => {
-            readContent.parentElement!.scrollTop = book.lastScrollY!;
-          });
-        }
-        updateTopbarProgress();
-        highlightTocItem(currentIndex);
-        return;
-      }
-    }
-
-    // 默认第一章
-    renderChapter(0);
-    updateTopbarProgress();
+  // ── Recent reading history ──
+  function getRecentHistory(): number[] {
+    try { return JSON.parse(localStorage.getItem(LS.recent) || '[]'); } catch { return []; }
+  }
+  function pushRecentHistory(idx: number): void {
+    const list = getRecentHistory().filter(i => i !== idx);
+    list.unshift(idx);
+    localStorage.setItem(LS.recent, JSON.stringify(list.slice(0, 5)));
   }
 
-  // ── 章节导航 ──
+  // ── 扁平化 TOC ──
+  function flattenToc(items: typeof tocEntries): void {
+    tocFlat = [];
+    function walk(list: typeof tocEntries): void {
+      for (const item of list) {
+        tocFlat.push({ chapterIndex: item.chapterIndex, title: item.title, depth: item.depth });
+        if (item.children && item.children.length > 0) walk(item.children);
+      }
+    }
+    walk(items);
+  }
 
-  /**
-   * 递归构建语义化 TOC 树
-   * 使用 <ul>/<li>/<button> 结构，
-   * 父节点带 chevron 展开/折叠，
-   * 默认全展开。
-   */
+  // ═══════════════════════════════════════════════════
+  // renderToc — 渲染全部或分页
+  // ═══════════════════════════════════════════════════
+
   function renderToc(
-    entries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof entries }>,
+    entries: typeof tocEntries,
     activeIdx: number,
+    filterQuery?: string,
   ): void {
     tocTree.innerHTML = '';
+    tocEmpty.style.display = 'none';
 
-    function buildTree(items: typeof entries, level: number): HTMLUListElement {
+    if (scrollMode === 'page' && !filterQuery) {
+      renderTocPaged(entries, activeIdx);
+    } else {
+      renderTocTree(entries, activeIdx, filterQuery);
+    }
+  }
+
+  /** 全量递归渲染（普通模式 / 搜索模式） */
+  function renderTocTree(
+    items: typeof tocEntries,
+    activeIdx: number,
+    filterQuery?: string,
+  ): void {
+    const query = filterQuery?.trim().toLowerCase() || '';
+    const isFiltering = query.length > 0;
+    let matchCount = 0;
+
+    function buildTree(list: typeof tocEntries, level: number): HTMLUListElement {
       const ul = document.createElement('ul');
       ul.setAttribute('role', 'group');
 
-      for (const item of items) {
+      for (const item of list) {
         const hasChildren = item.children && item.children.length > 0;
-        const depth = Math.min(item.depth, 2);
+        const d = Math.min(item.depth, 2);
         const isActive = item.chapterIndex === activeIdx;
+        const isFav = favorites.has(item.chapterIndex);
+
+        const labelMatch = !isFiltering || item.title.toLowerCase().includes(query);
+        const childUl = hasChildren ? buildTree(item.children!, level + 1) : null;
+        const childrenMatch = childUl && childUl.querySelector('.search-match');
+
+        if (isFiltering && !labelMatch && !childrenMatch) continue;
+        if (labelMatch) matchCount++;
 
         const li = document.createElement('li');
         li.setAttribute('role', 'treeitem');
         li.setAttribute('aria-level', String(level + 1));
         if (isActive) li.setAttribute('aria-current', 'true');
 
-        // ── 行容器 ──
+        // Row
         const row = document.createElement('div');
-        row.className = `toc-row depth-${depth}${isActive ? ' active' : ''}`;
-        row.tabIndex = -1;  // 由键盘事件统一管理
+        row.className = `toc-row depth-${d}${isActive ? ' active' : ''}${labelMatch ? ' search-match' : ' search-ancestor'}`;
+        row.tabIndex = -1;
         row.setAttribute('role', 'button');
         row.setAttribute('aria-label', item.title);
+        row.title = item.title;
         row.dataset.idx = String(item.chapterIndex);
 
-        // Chevron（可折叠的父节点）
+        // Chevron
         if (hasChildren) {
-          const chevron = document.createElement('button');
-          chevron.className = 'toc-chevron expanded';
-          chevron.setAttribute('aria-expanded', 'true');
-          chevron.setAttribute('aria-label', `折叠 ${item.title}`);
-          chevron.tabIndex = -1;
-          chevron.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"/></svg>`;
-          chevron.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleNode(chevron, li);
-          });
+          const chevron = createChevron(row, li, true);
           row.appendChild(chevron);
         } else {
-          const placeholder = document.createElement('span');
-          placeholder.className = 'toc-chevron-placeholder';
-          placeholder.setAttribute('aria-hidden', 'true');
-          row.appendChild(placeholder);
+          const ph = document.createElement('span');
+          ph.className = 'toc-chevron-placeholder';
+          ph.setAttribute('aria-hidden', 'true');
+          row.appendChild(ph);
         }
 
-        // 章节标签
+        // Label
         const label = document.createElement('span');
         label.className = 'toc-label';
         label.textContent = item.title;
         row.appendChild(label);
 
-        // 点击跳转
+        // Progress dot (active)
+        if (isActive) {
+          const dot = document.createElement('span');
+          dot.className = 'toc-progress-dot';
+          row.appendChild(dot);
+        }
+
+        // Favorite star
+        const favBtn = document.createElement('button');
+        favBtn.className = `toc-fav${isFav ? ' favorited' : ''}`;
+        favBtn.innerHTML = '⭐';
+        favBtn.setAttribute('aria-label', isFav ? '取消收藏' : '收藏');
+        favBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleFavorite(item.chapterIndex, favBtn);
+        });
+        row.appendChild(favBtn);
+
+        // Click → navigate
         row.addEventListener('click', () => {
           const idx = Number(row.dataset.idx);
           if (!isNaN(idx)) {
             goToChapter(idx);
-            // 移动端自动关闭目录
             if (window.innerWidth <= 768) closeToc();
           }
         });
 
-        li.appendChild(row);
+        // Context menu
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showContextMenu(e.clientX, e.clientY, item.title, item.chapterIndex);
+        });
 
-        // 子章节
-        if (hasChildren) {
-          const childUl = buildTree(item.children!, level + 1);
+        li.appendChild(row);
+        if (childUl && childUl.children.length > 0) {
           childUl.classList.add('toc-children');
           li.appendChild(childUl);
         }
-
         ul.appendChild(li);
       }
       return ul;
     }
 
-    tocTree.appendChild(buildTree(entries, 0));
-  }
+    tocTree.appendChild(buildTree(items, 0));
 
-  /** 折叠/展开父节点 */
-  function toggleNode(chevron: HTMLElement, li: HTMLElement): void {
-    const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
-    if (!childUl) return;
-
-    const isExpanded = chevron.classList.contains('expanded');
-    if (isExpanded) {
-      chevron.classList.remove('expanded');
-      chevron.setAttribute('aria-expanded', 'false');
-      chevron.setAttribute('aria-label', chevron.getAttribute('aria-label')!.replace('折叠', '展开'));
-      childUl.classList.add('collapsed');
+    if (isFiltering) {
+      tocTree.classList.add('filtering');
+      if (matchCount > 0) {
+        tocSearchCount.textContent = `${matchCount} 个结果`;
+        tocSearchCount.classList.add('visible');
+      } else {
+        tocSearchCount.textContent = '';
+        tocSearchCount.classList.remove('visible');
+        tocEmpty.style.display = 'block';
+      }
     } else {
-      chevron.classList.add('expanded');
-      chevron.setAttribute('aria-expanded', 'true');
-      chevron.setAttribute('aria-label', chevron.getAttribute('aria-label')!.replace('展开', '折叠'));
-      childUl.classList.remove('collapsed');
+      tocTree.classList.remove('filtering');
+      tocSearchCount.classList.remove('visible');
     }
   }
 
-  /** 高亮当前章节 */
+  /** 分页模式渲染 */
+  function renderTocPaged(items: typeof tocEntries, activeIdx: number): void {
+    flattenToc(items);
+
+    // 定位当前章节所在页
+    if (currentPage === -1) {
+      currentPage = tocFlat.findIndex(item => item.chapterIndex === activeIdx);
+      currentPage = Math.floor(Math.max(0, currentPage) / pageSize);
+    }
+
+    const totalPages = Math.ceil(tocFlat.length / pageSize);
+    const start = currentPage * pageSize;
+    const end = Math.min(start + pageSize, tocFlat.length);
+    const pageItems = tocFlat.slice(start, end);
+
+    const ul = document.createElement('ul');
+    ul.setAttribute('role', 'group');
+
+    for (const item of pageItems) {
+      const isActive = item.chapterIndex === activeIdx;
+      const isFav = favorites.has(item.chapterIndex);
+
+      const li = document.createElement('li');
+      li.setAttribute('role', 'treeitem');
+      if (isActive) li.setAttribute('aria-current', 'true');
+
+      const row = document.createElement('div');
+      row.className = `toc-row depth-${Math.min(item.depth, 2)}${isActive ? ' active' : ''}`;
+      row.tabIndex = -1;
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', item.title);
+      row.title = item.title;
+      row.dataset.idx = String(item.chapterIndex);
+
+      const ph = document.createElement('span');
+      ph.className = 'toc-chevron-placeholder';
+      ph.setAttribute('aria-hidden', 'true');
+      row.appendChild(ph);
+
+      const label = document.createElement('span');
+      label.className = 'toc-label';
+      label.textContent = item.title;
+      row.appendChild(label);
+
+      if (isActive) {
+        const dot = document.createElement('span');
+        dot.className = 'toc-progress-dot';
+        row.appendChild(dot);
+      }
+
+      const favBtn = document.createElement('button');
+      favBtn.className = `toc-fav${isFav ? ' favorited' : ''}`;
+      favBtn.innerHTML = '⭐';
+      favBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFavorite(item.chapterIndex, favBtn);
+      });
+      row.appendChild(favBtn);
+
+      row.addEventListener('click', () => {
+        goToChapter(item.chapterIndex);
+        if (window.innerWidth <= 768) closeToc();
+      });
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, item.title, item.chapterIndex);
+      });
+
+      li.appendChild(row);
+      ul.appendChild(li);
+    }
+
+    tocTree.appendChild(ul);
+
+    // 更新分页 UI
+    tocPagination.style.display = 'flex';
+    tocPageInfo.textContent = `第 ${currentPage + 1} / ${totalPages} 页`;
+    (document.getElementById('toc-page-prev') as HTMLButtonElement).disabled = currentPage <= 0;
+    (document.getElementById('toc-page-next') as HTMLButtonElement).disabled = currentPage >= totalPages - 1;
+
+    // 定位当前章节
+    requestAnimationFrame(() => {
+      const activeRow = tocTree.querySelector('.toc-row.active') as HTMLElement | null;
+      activeRow?.scrollIntoView({ block: 'center' });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Chevron helper
+  // ═══════════════════════════════════════════════════
+
+  function createChevron(row: HTMLElement, li: HTMLElement, expanded: boolean): HTMLButtonElement {
+    const chevron = document.createElement('button');
+    chevron.className = `toc-chevron${expanded ? ' expanded' : ''}`;
+    chevron.setAttribute('aria-expanded', String(expanded));
+    chevron.tabIndex = -1;
+    chevron.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"/></svg>`;
+    chevron.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleNode(chevron, li);
+    });
+    return chevron;
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Favorites
+  // ═══════════════════════════════════════════════════
+
+  function toggleFavorite(chapterIndex: number, btn?: HTMLElement): void {
+    if (favorites.has(chapterIndex)) {
+      favorites.delete(chapterIndex);
+      btn?.classList.remove('favorited');
+    } else {
+      favorites.add(chapterIndex);
+      btn?.classList.add('favorited');
+    }
+    saveFavorites();
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Context menu
+  // ═══════════════════════════════════════════════════
+
+  function showContextMenu(x: number, y: number, title: string, chapterIndex: number): void {
+    ctxMenu.style.display = 'block';
+    ctxMenu.style.left = `${x}px`;
+    ctxMenu.style.top = `${y}px`;
+    ctxMenu.dataset.idx = String(chapterIndex);
+    ctxMenu.dataset.title = title;
+
+    // 超出窗口处理
+    requestAnimationFrame(() => {
+      const r = ctxMenu.getBoundingClientRect();
+      if (r.bottom > window.innerHeight) ctxMenu.style.top = `${y - r.height}px`;
+      if (r.right > window.innerWidth) ctxMenu.style.left = `${x - r.width}px`;
+    });
+  }
+
+  function hideContextMenu(): void { ctxMenu.style.display = 'none'; }
+
+  ctxMenu.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!btn) return;
+    const idx = Number(ctxMenu.dataset.idx);
+    const title = ctxMenu.dataset.title || '';
+
+    switch (btn.dataset.action) {
+      case 'copy-title':
+        navigator.clipboard.writeText(title);
+        showToast('标题已复制', 'success');
+        break;
+      case 'favorite':
+        toggleFavorite(idx);
+        // 立即关闭上下文菜单并重新渲染
+        hideContextMenu();
+        renderToc(tocEntries, currentIndex);
+        break;
+      case 'bookmark':
+        addBookmarkHere();
+        break;
+    }
+    hideContextMenu();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!ctxMenu.contains(e.target as Node)) hideContextMenu();
+  });
+
+  // ═══════════════════════════════════════════════════
+  // Search
+  // ═══════════════════════════════════════════════════
+
+  let searchTimer: ReturnType<typeof setTimeout>;
+  tocSearchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const q = tocSearchInput.value.trim();
+      if (scrollMode === 'page' && q) {
+        // 搜索时临时切到全量模式
+        tocPagination.style.display = 'none';
+        tocTree.innerHTML = '';
+        renderTocTree(tocEntries, currentIndex, q);
+      } else if (scrollMode === 'page' && !q) {
+        currentPage = -1;
+        renderTocPaged(tocEntries, currentIndex);
+      } else {
+        renderToc(tocEntries, currentIndex, q);
+      }
+      if (q) scrollTocToFirstMatch();
+    }, 150);
+  });
+
+  // Escape in search → clear
+  tocSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      tocSearchInput.value = '';
+      tocSearchInput.dispatchEvent(new Event('input'));
+      tocSearchInput.blur();
+    }
+  });
+
+  function scrollTocToFirstMatch(): void {
+    const first = tocTree.querySelector('.search-match') as HTMLElement | null;
+    first?.scrollIntoView({ block: 'start' });
+  }
+
+  // Ctrl/Cmd+F → focus search
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault();
+      tocSearchInput.focus();
+      tocSearchInput.select();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════
+  // Pagination controls
+  // ═══════════════════════════════════════════════════
+
+  document.getElementById('toc-page-prev')!.addEventListener('click', () => {
+    if (currentPage > 0) {
+      currentPage--;
+      renderToc(tocEntries, currentIndex);
+    }
+  });
+
+  document.getElementById('toc-page-next')!.addEventListener('click', () => {
+    const totalPages = Math.ceil(tocFlat.length / pageSize);
+    if (currentPage < totalPages - 1) {
+      currentPage++;
+      renderToc(tocEntries, currentIndex);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════
+  // Scroll mode toggle
+  // ═══════════════════════════════════════════════════
+
+  function applyScrollMode(): void {
+    tocPanel.setAttribute('data-scroll-mode', scrollMode);
+    const btn = document.getElementById('toc-btn-scroll-mode')!;
+    btn.classList.toggle('active', scrollMode === 'page');
+    localStorage.setItem(LS.scrollMode, scrollMode);
+
+    if (scrollMode === 'page') {
+      tocPagination.style.display = 'flex';
+      currentPage = -1; // 强制重定位
+      renderToc(tocEntries, currentIndex);
+    } else {
+      tocPagination.style.display = 'none';
+      renderToc(tocEntries, currentIndex);
+      // 恢复滚动位置
+      const savedTop = Number(localStorage.getItem(LS.scrollTop) || '0');
+      if (savedTop) requestAnimationFrame(() => { tocNav.scrollTop = savedTop; });
+    }
+  }
+
+  document.getElementById('toc-btn-scroll-mode')!.addEventListener('click', () => {
+    scrollMode = scrollMode === 'normal' ? 'page' : 'normal';
+    applyScrollMode();
+  });
+
+  // Collapse all
+  document.getElementById('toc-btn-collapse-all')!.addEventListener('click', () => {
+    const allChevrons = tocTree.querySelectorAll('.toc-chevron');
+    const allExpanded = Array.from(allChevrons).every(c => c.classList.contains('expanded'));
+    allChevrons.forEach(c => {
+      const li = c.closest('li');
+      if (!li) return;
+      if (allExpanded) {
+        c.classList.remove('expanded');
+        c.setAttribute('aria-expanded', 'false');
+        (li.querySelector(':scope > .toc-children') as HTMLElement)?.classList.add('collapsed');
+      } else {
+        c.classList.add('expanded');
+        c.setAttribute('aria-expanded', 'true');
+        (li.querySelector(':scope > .toc-children') as HTMLElement)?.classList.remove('collapsed');
+      }
+    });
+  });
+
+  // ═══════════════════════════════════════════════════
+  // Recent reading
+  // ═══════════════════════════════════════════════════
+
+  function updateRecentReading(): void {
+    const recent = getRecentHistory();
+    if (recent.length === 0) {
+      tocRecent.style.display = 'none';
+      return;
+    }
+    tocRecent.style.display = 'block';
+    tocRecentList.innerHTML = recent.map(idx => {
+      const ch = chapters[idx];
+      if (!ch) return '';
+      return `<div class="toc-recent-item" data-idx="${idx}">
+        <span class="toc-recent-dot"></span>
+        <span class="toc-recent-label">${escapeHtml(ch.title)}</span>
+      </div>`;
+    }).join('');
+
+    tocRecentList.querySelectorAll('.toc-recent-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = Number((el as HTMLElement).dataset.idx);
+        if (!isNaN(idx)) goToChapter(idx);
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Highlight & scroll
+  // ═══════════════════════════════════════════════════
+
   function highlightTocItem(index: number): void {
-    // 移除旧 active
     tocTree.querySelectorAll('.toc-row.active').forEach(el => {
       el.classList.remove('active');
       el.closest('li')?.removeAttribute('aria-current');
     });
-
-    // 设置新 active
     const row = tocTree.querySelector(`.toc-row[data-idx="${index}"]`) as HTMLElement | null;
     if (row) {
       row.classList.add('active');
       row.closest('li')?.setAttribute('aria-current', 'true');
-
-      // 确保所有祖先节点展开
       let parent = row.closest('.toc-children') as HTMLElement | null;
       while (parent) {
         parent.classList.remove('collapsed');
-        const chevron = parent.closest('li')?.querySelector('.toc-chevron') as HTMLElement | null;
-        if (chevron) {
-          chevron.classList.add('expanded');
-          chevron.setAttribute('aria-expanded', 'true');
-        }
+        const cv = parent.closest('li')?.querySelector('.toc-chevron') as HTMLElement | null;
+        if (cv) { cv.classList.add('expanded'); cv.setAttribute('aria-expanded', 'true'); }
         parent = parent.closest('.toc-children') as HTMLElement | null;
       }
     }
   }
 
-  /** 自动滚动到当前章节（居中） */
   function scrollTocToCurrent(): void {
     const row = tocTree.querySelector('.toc-row.active') as HTMLElement | null;
-    if (row) {
-      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Toggle node (chevron)
+  // ═══════════════════════════════════════════════════
+
+  function toggleNode(chevron: HTMLElement, li: HTMLElement): void {
+    const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
+    if (!childUl) return;
+    const expanded = chevron.classList.contains('expanded');
+    if (expanded) {
+      chevron.classList.remove('expanded');
+      chevron.setAttribute('aria-expanded', 'false');
+      childUl.classList.add('collapsed');
+    } else {
+      chevron.classList.add('expanded');
+      chevron.setAttribute('aria-expanded', 'true');
+      childUl.classList.remove('collapsed');
     }
   }
 
-  /** 关闭目录（移动端） */
-  function closeToc(): void {
-    (window as any).__tocClose?.();
-  }
+  // ═══════════════════════════════════════════════════
+  // Drawer open/close
+  // ═══════════════════════════════════════════════════
 
-  /** 打开目录 */
+  function closeToc(): void { (window as any).__tocClose?.(); }
   function openToc(): void {
     (window as any).__tocOpen?.();
-    // 打开后滚动到当前章节
-    requestAnimationFrame(() => scrollTocToCurrent());
+    requestAnimationFrame(() => {
+      if (scrollMode === 'page') {
+        // 在分页模式下定位到包含当前章节的页
+        currentPage = -1;
+        renderToc(tocEntries, currentIndex);
+      } else {
+        const savedTop = Number(localStorage.getItem(LS.scrollTop) || '0');
+        if (savedTop) tocNav.scrollTop = savedTop;
+        scrollTocToCurrent();
+      }
+    });
   }
 
-  // ── TOC 键盘导航 ──
+  // ═══════════════════════════════════════════════════
+  // Keyboard nav (within TOC)
+  // ═══════════════════════════════════════════════════
+
   tocNav.addEventListener('keydown', (e) => {
+    if (e.target === tocSearchInput) return;
     const rows = Array.from(tocTree.querySelectorAll('.toc-row')) as HTMLElement[];
     if (rows.length === 0) return;
-
     const focused = document.activeElement as HTMLElement;
-    const idx = rows.indexOf(focused as HTMLElement);
+    const idx = rows.indexOf(focused);
+    let next: HTMLElement | undefined;
 
     switch (e.key) {
-      case 'ArrowDown': {
-        e.preventDefault();
-        const next = idx < rows.length - 1 ? rows[idx + 1] : rows[0];
-        next.focus({ preventScroll: false });
-        next.scrollIntoView({ block: 'nearest' });
-        break;
-      }
-      case 'ArrowUp': {
-        e.preventDefault();
-        const prev = idx > 0 ? rows[idx - 1] : rows[rows.length - 1];
-        prev.focus({ preventScroll: false });
-        prev.scrollIntoView({ block: 'nearest' });
-        break;
-      }
-      case 'Home': {
-        e.preventDefault();
-        rows[0].focus({ preventScroll: false });
-        rows[0].scrollIntoView({ block: 'start' });
-        break;
-      }
-      case 'End': {
-        e.preventDefault();
-        rows[rows.length - 1].focus({ preventScroll: false });
-        rows[rows.length - 1].scrollIntoView({ block: 'end' });
-        break;
-      }
-      case 'Enter':
-      case ' ': {
-        e.preventDefault();
-        // 点击当前聚焦的行
-        if (focused && rows.includes(focused)) {
-          focused.click();
-        }
-        break;
-      }
+      case 'ArrowDown': e.preventDefault(); next = idx < rows.length - 1 ? rows[idx + 1] : rows[0]; break;
+      case 'ArrowUp':   e.preventDefault(); next = idx > 0 ? rows[idx - 1] : rows[rows.length - 1]; break;
+      case 'Home':      e.preventDefault(); next = rows[0]; break;
+      case 'End':       e.preventDefault(); next = rows[rows.length - 1]; break;
+      case 'Enter': case ' ': e.preventDefault(); if (focused && rows.includes(focused)) focused.click(); return;
       case 'ArrowRight': {
         e.preventDefault();
-        // 展开当前节点的子节点
         const li = focused?.closest('li');
         if (li) {
-          const chevron = li.querySelector(':scope > .toc-row .toc-chevron') as HTMLElement | null;
-          const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
-          if (chevron && childUl && childUl.classList.contains('collapsed')) {
-            toggleNode(chevron, li);
-          }
+          const cv = li.querySelector(':scope > .toc-row .toc-chevron') as HTMLElement | null;
+          const child = li.querySelector(':scope > .toc-children') as HTMLElement | null;
+          if (cv && child?.classList.contains('collapsed')) toggleNode(cv, li);
         }
-        break;
+        return;
       }
       case 'ArrowLeft': {
         e.preventDefault();
         const li = focused?.closest('li');
         if (li) {
-          const chevron = li.querySelector(':scope > .toc-row .toc-chevron') as HTMLElement | null;
-          const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
-          if (chevron && childUl && !childUl.classList.contains('collapsed')) {
-            toggleNode(chevron, li);
-          }
+          const cv = li.querySelector(':scope > .toc-row .toc-chevron') as HTMLElement | null;
+          const child = li.querySelector(':scope > .toc-children') as HTMLElement | null;
+          if (cv && child && !child.classList.contains('collapsed')) toggleNode(cv, li);
         }
-        break;
+        return;
       }
-      case 'Escape': {
-        e.preventDefault();
-        closeToc();
-        break;
-      }
+      case 'Escape': e.preventDefault(); closeToc(); return;
+      default: return;
+    }
+
+    if (next) {
+      next.focus({ preventScroll: false });
+      next.scrollIntoView({ block: 'nearest' });
     }
   });
 
+  // ═══════════════════════════════════════════════════
+  // Save scroll position on close / scroll
+  // ═══════════════════════════════════════════════════
+
+  let tocScrollTimer: ReturnType<typeof setTimeout>;
+  tocNav.addEventListener('scroll', () => {
+    if (scrollMode === 'normal') {
+      clearTimeout(tocScrollTimer);
+      tocScrollTimer = setTimeout(() => {
+        localStorage.setItem(LS.scrollTop, String(tocNav.scrollTop));
+      }, 300);
+    }
+  }, { passive: true });
+
+  // ═══════════════════════════════════════════════════
+  // goToChapter
+  // ═══════════════════════════════════════════════════
+
   async function goToChapter(index: number): Promise<void> {
     if (index < 0 || index >= chapters.length) return;
-
-    // 保存当前进度
     await saveProgress();
 
     currentIndex = index;
+    pushRecentHistory(index);
+    updateRecentReading();
     renderChapter(index);
     updateTopbarProgress();
-
-    // 滚动到顶部
     readContent.parentElement!.scrollTop = 0;
-
-    // 更新 TOC 高亮
     highlightTocItem(index);
   }
 
@@ -536,7 +854,74 @@ import '../styles/tokens.css';
     await updateProgress(bookId!, chapterId, scrollY);
   }
 
-  // ── 样式管理 ──
+  // ── Escape closes TOC globally ──
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && (window as any).__tocIsOpen?.()) {
+      closeToc();
+    }
+  });
+
+  // ── 初始化 ──
+  async function init(): Promise<void> {
+    const book = await getBook(bookId!);
+    if (!book) {
+      showToast('书籍不存在', 'error');
+      setTimeout(() => { location.href = '/reader/'; }, 2000);
+      return;
+    }
+
+    bookTitle = book.customTitle || book.title;
+    document.title = `${bookTitle} — Reader`;
+    topbarTitle.textContent = bookTitle;
+    styleBookName.textContent = `《${bookTitle}》的样式`;
+
+    currentStyle = await updateStyleFromSaved();
+    syncStyleUI(currentStyle);
+
+    chapters = await getChapters(bookId!);
+    if (chapters.length === 0) {
+      contentEmpty.innerHTML = '<p>此书无内容</p>';
+      return;
+    }
+
+    const emptyChapters = chapters.filter(c => !c.content.trim());
+    if (emptyChapters.length === chapters.length) {
+      contentEmpty.innerHTML = '<p>所有章节内容为空 — EPUB 解析未能提取正文</p>';
+      return;
+    }
+
+    // 加载 TOC
+    try { if (book.tocJson) tocEntries = JSON.parse(book.tocJson); } catch { /* ignore */ }
+    if (tocEntries.length === 0) {
+      tocEntries = chapters.map((ch, i) => ({ chapterIndex: i, title: ch.title, depth: ch.depth }));
+    }
+
+    tocCount.textContent = String(chapters.length);
+
+    // 加载偏好
+    loadFavorites();
+    applyScrollMode();
+    updateRecentReading();
+
+    // 恢复进度
+    if (book.lastChapterId) {
+      const idx = chapters.findIndex(c => c.id === book.lastChapterId);
+      if (idx >= 0) {
+        currentIndex = idx;
+        renderChapter(currentIndex);
+        if (book.lastScrollY) {
+          requestAnimationFrame(() => { readContent.parentElement!.scrollTop = book.lastScrollY!; });
+        }
+        updateTopbarProgress();
+        highlightTocItem(currentIndex);
+        return;
+      }
+    }
+
+    renderChapter(0);
+    updateTopbarProgress();
+  }
+
   async function updateStyleFromSaved(): Promise<Omit<BookStyle, 'bookId'>> {
     const style = await loadStyle(bookId!);
     const { bookId: _, ...rest } = style;
