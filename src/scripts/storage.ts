@@ -74,11 +74,34 @@ export async function getAllBooks(): Promise<BookMeta[]> {
   return all.sort((a, b) => (b.lastReadAt ?? b.addedAt) - (a.lastReadAt ?? a.addedAt));
 }
 
-/** 批量保存章节 */
+/**
+ * 批量保存章节（逐个写入，单个失败不影响整体）
+ */
 export async function saveChapters(chapters: Chapter[]): Promise<void> {
   const db = await getDb();
   const tx = db.transaction('chapters', 'readwrite');
-  await Promise.all([...chapters.map(c => tx.store.put(c)), tx.done]);
+  const store = tx.objectStore('chapters');
+
+  const errors: Array<{ index: number; error: string }> = [];
+  for (let i = 0; i < chapters.length; i++) {
+    try {
+      await store.put(chapters[i]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push({ index: i, error: msg });
+      console.warn(`章节 ${i} 保存失败:`, msg);
+    }
+  }
+
+  try {
+    await tx.done;
+  } catch (err) {
+    console.warn('章节事务提交失败:', err);
+  }
+
+  if (errors.length > 0) {
+    console.error(`${errors.length}/${chapters.length} 章节保存失败`);
+  }
 }
 
 /** 获取书籍的所有章节（按 index 排序） */

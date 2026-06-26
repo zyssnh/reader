@@ -205,8 +205,18 @@ import '../styles/tokens.css';
     // 加载章节
     chapters = await getChapters(bookId!);
     if (chapters.length === 0) {
-      contentEmpty.innerHTML = '<p>此书无内容</p>';
+      contentEmpty.innerHTML = '<p>此书无内容 — 可能是 EPUB 解析失败</p><p style="font-size:12px;color:var(--text-muted);margin-top:var(--space-2)">请返回书架重新导入</p>';
       return;
+    }
+
+    // 检查是否所有章节内容为空
+    const emptyChapters = chapters.filter(c => !c.content.trim());
+    if (emptyChapters.length === chapters.length) {
+      contentEmpty.innerHTML = '<p>所有章节内容为空</p><p style="font-size:12px;color:var(--text-muted);margin-top:var(--space-2)">EPUB 解析未能提取正文，请尝试重新导入</p>';
+      return;
+    }
+    if (emptyChapters.length > 0) {
+      console.warn(`${emptyChapters.length}/${chapters.length} 章节内容为空`);
     }
 
     tocCount.textContent = String(chapters.length);
