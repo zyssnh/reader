@@ -1,0 +1,106 @@
+---
+/**
+ * TocPanel 组件
+ * 左侧目录面板，可收起
+ */
+---
+
+<aside class="toc-panel" id="toc-panel">
+  <div class="toc-header">
+    <span class="toc-title">目录</span>
+    <span class="toc-count" id="toc-count"></span>
+  </div>
+  <nav class="toc-list" id="toc-list" aria-label="目录导航"></nav>
+</aside>
+
+<style>
+  .toc-panel {
+    width: 220px;
+    min-width: 220px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .toc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    height: 32px;
+  }
+
+  .toc-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: lowercase;
+  }
+
+  .toc-count {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .toc-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-1) 0;
+  }
+
+  .toc-list .toc-item {
+    display: block;
+    width: 100%;
+    padding: var(--space-1) var(--space-4);
+    border: none;
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.15s ease;
+    column-count: 1 !important;
+    columns: unset !important;
+  }
+
+  .toc-list .toc-item.depth-1 { padding-left: 28px; font-size: 12px; }
+  .toc-list .toc-item.depth-2 { padding-left: 40px; font-size: 11px; }
+
+  .toc-list .toc-item:hover {
+    background: var(--bg-card);
+    color: var(--text-primary);
+  }
+
+  .toc-list .toc-item.active {
+    border-left-color: var(--accent-blue);
+    color: var(--accent-blue);
+    background: rgba(88, 166, 255, 0.08);
+  }
+
+  /* 响应式 */
+  @media (max-width: 768px) {
+    .toc-panel {
+      position: fixed;
+      left: 0;
+      top: 44px;
+      bottom: 0;
+      z-index: 100;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+    }
+
+    .toc-panel.open { transform: translateX(0); }
+  }
+</style>

@@ -1,0 +1,170 @@
+---
+/**
+ * MetaEditor 组件
+ * 书籍元数据编辑弹窗
+ */
+---
+
+<div class="meta-editor-overlay" id="meta-editor-overlay" style="display:none;">
+  <div class="meta-editor">
+    <div class="meta-editor-header">
+      <span class="meta-editor-title">编辑元数据</span>
+      <button class="meta-editor-close" id="meta-editor-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="meta-editor-body">
+      <label class="meta-field">
+        <span class="meta-label">书名</span>
+        <input type="text" id="meta-title" class="meta-input" />
+      </label>
+      <label class="meta-field">
+        <span class="meta-label">作者</span>
+        <input type="text" id="meta-author" class="meta-input" />
+      </label>
+      <label class="meta-field">
+        <span class="meta-label">描述</span>
+        <textarea id="meta-description" class="meta-input meta-textarea" rows="3"></textarea>
+      </label>
+    </div>
+    <div class="meta-editor-actions">
+      <button class="meta-btn meta-btn--danger" id="meta-delete">删除此书</button>
+      <button class="meta-btn meta-btn--primary" id="meta-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .meta-editor-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+  }
+
+  .meta-editor {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 360px;
+    max-width: 90vw;
+  }
+
+  .meta-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .meta-editor-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: lowercase;
+  }
+
+  .meta-editor-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+  }
+
+  .meta-editor-close:hover {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+  }
+
+  .meta-editor-body {
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .meta-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-transform: lowercase;
+  }
+
+  .meta-input {
+    width: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    outline: none;
+    transition: all 0.15s ease;
+    resize: vertical;
+  }
+
+  .meta-input:focus {
+    border-color: var(--accent-blue);
+  }
+
+  .meta-textarea {
+    min-height: 60px;
+  }
+
+  .meta-editor-actions {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .meta-btn {
+    padding: var(--space-1) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .meta-btn:hover {
+    border-color: var(--border-strong);
+  }
+
+  .meta-btn--primary {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
+
+  .meta-btn--danger {
+    color: var(--accent-red);
+    border-color: transparent;
+  }
+
+  .meta-btn--danger:hover {
+    border-color: var(--accent-red);
+  }
+</style>

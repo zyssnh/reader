@@ -1,12 +1,11 @@
 ---
 /**
- * Reader — 极客书房
- * 主页面：三栏布局组装所有组件
+ * Reader v2 — 书架主页
+ * 卡片网格布局，拖拽导入，hash 去重
  */
-import Topbar from '../components/Topbar.astro';
-import Sidebar from '../components/Sidebar.astro';
-import Reader from '../components/Reader.astro';
-import SettingsPanel from '../components/SettingsPanel.astro';
+import BookCard from '../components/shelf/BookCard.astro';
+import ImportBtn from '../components/shelf/ImportBtn.astro';
+import MetaEditor from '../components/shelf/MetaEditor.astro';
 import '../styles/tokens.css';
 ---
 
@@ -18,7 +17,6 @@ import '../styles/tokens.css';
   <meta name="theme-color" content="#161b22" />
   <meta name="description" content="极客风格电子书阅读器 — 支持 EPUB / TXT，离线可用" />
 
-  <!-- PWA / iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <meta name="apple-mobile-web-app-title" content="Reader" />
@@ -28,16 +26,54 @@ import '../styles/tokens.css';
   <title>Reader — 极客书房</title>
 </head>
 <body>
-  <div class="app-layout" id="app-layout">
-    <Topbar />
-    <div class="app-body">
-      <Sidebar />
-      <Reader />
-      <SettingsPanel />
+  <div class="app">
+    <!-- Topbar -->
+    <header class="topbar">
+      <a href="/reader/" class="topbar-logo" aria-label="书架首页">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+        </svg>
+        <span class="topbar-brand">读</span>
+      </a>
+      <div class="topbar-actions">
+        <ImportBtn />
+      </div>
+    </header>
+
+    <!-- 拖拽遮罩 -->
+    <div class="drop-overlay" id="drop-overlay" style="display:none;">
+      <div class="drop-hint">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p>释放文件以导入</p>
+      </div>
     </div>
+
+    <!-- 书架网格 -->
+    <main class="shelf">
+      <section class="shelf-section" id="recent-section" style="display:none;">
+        <h2 class="shelf-heading">最近阅读</h2>
+        <div class="shelf-grid" id="recent-grid"></div>
+      </section>
+      <section class="shelf-section" id="all-section" style="display:none;">
+        <h2 class="shelf-heading">全部书籍</h2>
+        <div class="shelf-grid" id="all-grid"></div>
+      </section>
+
+      <!-- 空状态 -->
+      <div class="shelf-empty" id="shelf-empty">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+        </svg>
+        <p class="shelf-empty-text">书架空空如也</p>
+        <p class="shelf-empty-hint">拖拽 EPUB 或 TXT 文件到页面，或点击右上角导入按钮</p>
+      </div>
+    </main>
+
+    <MetaEditor />
   </div>
 
-  <!-- Service Worker 注册 -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/reader/sw.js').catch(() => {});
@@ -47,363 +83,258 @@ import '../styles/tokens.css';
 </html>
 
 <style is:global>
-  /* ── App 布局 ── */
-  .app-layout {
+  .app {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--bg-base);
   }
 
-  .app-body {
+  /* ── Topbar ── */
+  .topbar {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+    padding: 0 var(--space-4);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    letter-spacing: 0.06em;
+  }
+
+  .topbar-brand {
+    color: var(--accent-blue);
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  /* ── 拖拽遮罩 ── */
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .drop-hint {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    color: var(--accent-blue);
+    font-family: var(--font-mono);
+    font-size: 16px;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── 书架 ── */
+  .shelf {
     flex: 1;
-    overflow: hidden;
+    padding: var(--space-6);
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
   }
 
-  /* ── 全局阅读内容样式 ── */
-  html.reader-indent .reader-container p {
-    text-indent: 2em;
+  .shelf-section {
+    margin-bottom: var(--space-8);
   }
 
-  html.reader-hyphenation .reader-container p {
-    hyphens: auto;
-    -webkit-hyphens: auto;
+  .shelf-heading {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: lowercase;
+    margin-bottom: var(--space-4);
   }
 
-  html.reader-vertical .reader-container {
-    writing-mode: vertical-rl;
+  .shelf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--space-4);
   }
 
-  /* ── 响应式：小屏隐藏侧栏 ── */
-  @media (max-width: 768px) {
-    .sidebar {
-      position: fixed;
-      left: 0;
-      top: 44px;
-      bottom: 0;
-      z-index: 100;
-      transform: translateX(-100%);
-      transition: transform 0.2s ease;
-    }
-
-    .sidebar.open {
-      transform: translateX(0);
-    }
-
-    .settings-panel {
-      position: fixed;
-      right: 0;
-      top: 44px;
-      bottom: 0;
-      z-index: 100;
-      transform: translateX(100%);
-      transition: transform 0.2s ease;
-    }
-
-    .settings-panel.open {
-      transform: translateX(0);
-    }
+  /* ── 空状态 ── */
+  .shelf-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    padding: var(--space-8);
+    color: var(--text-muted);
+    text-align: center;
   }
+
+  .shelf-empty-text {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    letter-spacing: 0.06em;
+  }
+
+  .shelf-empty-hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    opacity: 0.5;
+  }
+
+  /* ── Toast ── */
+  .reader-toast {
+    position: fixed;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--text-primary);
+    z-index: 4000;
+    opacity: 0;
+    transition: all 0.2s ease;
+    pointer-events: none;
+  }
+
+  .reader-toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .reader-toast--error { border-color: var(--accent-red); color: var(--accent-red); }
+  .reader-toast--success { border-color: var(--accent-green); color: var(--accent-green); }
 </style>
 
 <script>
-  import {
-    loadBook,
-    goToChapter,
-    nextChapter,
-    prevChapter,
-    on,
-    getReaderState,
-    getCurrentBookmarks,
-    removeBookmark,
-    showToast,
-    initReaderCore,
-    restoreBook,
-  } from '../scripts/reader-core';
-  import { loadSettings, getSettings } from '../scripts/settings';
-  import { getAllBooks, getBook, deleteBook, type BookRecord } from '../scripts/storage';
-  import type { BookMeta, TocItem } from '../scripts/epub-loader';
-  import type { TxtMeta } from '../scripts/txt-loader';
+  import { getAllBooks, deleteBook, updateBookMeta, calcHash, findByHash, saveBook, saveChapters } from '../scripts/storage';
+  import type { BookMeta, Chapter } from '../types/index';
+  import { parseTxt } from '../scripts/parsers/txt';
+  import { parseEpub } from '../scripts/parsers/epub';
 
-  // ── DOM 引用 ──
-  const sidebar = document.getElementById('sidebar') as HTMLElement;
-  const settingsPanel = document.getElementById('settings-panel') as HTMLElement;
-  const readerContainer = document.getElementById('reader-container') as HTMLElement;
-  const readerEmpty = document.getElementById('reader-empty') as HTMLElement;
-  const readerHeader = document.getElementById('reader-header') as HTMLElement;
-  const chapterTitle = document.getElementById('reader-chapter-title') as HTMLElement;
-  const topbarCenter = document.getElementById('topbar-center') as HTMLElement;
-  const topbarBookTitle = document.getElementById('topbar-book-title') as HTMLElement;
-  const topbarProgressBar = document.getElementById('topbar-progress-bar') as HTMLElement;
-  const topbarProgressText = document.getElementById('topbar-progress-text') as HTMLElement;
-  const tocSection = document.getElementById('toc-section') as HTMLElement;
-  const tocList = document.getElementById('toc-list') as HTMLElement;
-  const tocCount = document.getElementById('toc-count') as HTMLElement;
-  const bookmarksSection = document.getElementById('bookmarks-section') as HTMLElement;
-  const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
-  const uploadArea = document.getElementById('sidebar-upload') as HTMLElement;
-  const fileInput = document.getElementById('file-input') as HTMLInputElement;
-  const bookshelfSection = document.getElementById('bookshelf-section') as HTMLElement;
-  const bookshelfList = document.getElementById('bookshelf-list') as HTMLElement;
-
-  // 初始化
-  await loadSettings();
-
-  // ── 面板切换 ──
-  document.getElementById('btn-sidebar-toggle')?.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-    // 手机端关闭设置面板
-    if (settingsPanel.classList.contains('open')) settingsPanel.classList.remove('open');
-  });
-
-  document.getElementById('btn-settings-toggle')?.addEventListener('click', () => {
-    const isVisible = settingsPanel.style.display !== 'none';
-    if (isVisible) {
-      settingsPanel.style.display = 'none';
-      settingsPanel.classList.remove('open');
-    } else {
-      settingsPanel.style.display = 'flex';
-      settingsPanel.classList.add('open');
-    }
-  });
-
-  document.getElementById('btn-settings-close')?.addEventListener('click', () => {
-    settingsPanel.style.display = 'none';
-    settingsPanel.classList.remove('open');
-  });
-
-  // ── 文件上传 ──
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files?.[0];
-    if (file) await loadBook(file);
-    fileInput.value = '';
-  });
-
-  uploadArea.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).tagName !== 'INPUT') {
-      fileInput.click();
-    }
-  });
-
-  // 拖拽上传
-  document.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    uploadArea.querySelector('.upload-label')?.classList.add('drag-over');
-  });
-
-  document.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.target === document.body) {
-      uploadArea.querySelector('.upload-label')?.classList.remove('drag-over');
-    }
-  });
-
-  document.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    uploadArea.querySelector('.upload-label')?.classList.remove('drag-over');
-
-    const file = e.dataTransfer?.files?.[0];
-    if (file) await loadBook(file);
-  });
-
-  // ── 书籍加载事件 ──
-  on('book-loaded', (meta: unknown) => {
-    const m = meta as BookMeta | TxtMeta;
-    readerEmpty.style.display = 'none';
-    readerHeader.style.display = 'block';
-    topbarCenter.style.display = 'flex';
-
-    // 更新顶部栏
-    topbarBookTitle.textContent = m.title;
-
-    // 构建目录
-    buildTOC(m);
-
-    // 显示书签区
-    bookmarksSection.style.display = 'flex';
-    refreshBookmarks();
-
-    // 高亮上传区状态
-    uploadArea.style.opacity = '0.5';
-  });
-
-  // ── 构建目录 ──
-  function buildTOC(m: BookMeta | TxtMeta): void {
-    tocSection.style.display = 'flex';
-    tocList.innerHTML = '';
-
-    if ('toc' in m) {
-      // EPUB
-      const epubMeta = m as BookMeta;
-      tocCount.textContent = String(epubMeta.toc.length);
-
-      function renderItems(items: TocItem[]): void {
-        for (const item of items) {
-          const link = document.createElement('a');
-          link.href = '#';
-          link.textContent = item.label;
-          link.className = `toc-depth-${Math.min(item.depth, 3)}`;
-          link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const hrefs = getReaderState().chapterHrefs;
-            const idx = hrefs.indexOf(item.href);
-            if (idx >= 0) goToChapter(idx, readerContainer);
-          });
-          tocList.appendChild(link);
-
-          if (item.children) renderItems(item.children);
-        }
-      }
-      renderItems(epubMeta.toc);
-    } else {
-      // TXT
-      const txtMeta = m as TxtMeta;
-      tocCount.textContent = String(txtMeta.chapters.length);
-
-      for (let i = 0; i < txtMeta.chapters.length; i++) {
-        const ch = txtMeta.chapters[i];
-        const link = document.createElement('a');
-        link.href = '#';
-        link.textContent = ch.title;
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          goToChapter(i, readerContainer);
-        });
-        tocList.appendChild(link);
-      }
-    }
+  // ── Toast ──
+  function showToast(msg: string, type: 'info' | 'error' | 'success' = 'info'): void {
+    const toast = document.createElement('div');
+    toast.className = `reader-toast reader-toast--${type}`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('reader-toast--visible'));
+    setTimeout(() => {
+      toast.classList.remove('reader-toast--visible');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
   }
 
-  // ── 章节切换 ──
-  on('chapter-changed', (index: unknown) => {
-    const state = getReaderState();
-    const idx = index as number;
-    const meta = state.meta as BookMeta | TxtMeta | null;
+  // ── 渲染书架 ──
+  const recentGrid = document.getElementById('recent-grid')!;
+  const allGrid = document.getElementById('all-grid')!;
+  const recentSection = document.getElementById('recent-section')!;
+  const allSection = document.getElementById('all-section')!;
+  const shelfEmpty = document.getElementById('shelf-empty')!;
 
-    // 更新章节标题
-    if (meta) {
-      if ('chapters' in meta) {
-        const ch = meta.chapters[idx];
-        if (ch) chapterTitle.textContent = ch.title;
-      } else if ('toc' in meta) {
-        const href = state.currentChapterHref;
-        function findLabel(items: TocItem[]): string | null {
-          for (const item of items) {
-            if (item.href === href) return item.label;
-            if (item.children) {
-              const found = findLabel(item.children);
-              if (found) return found;
-            }
-          }
-          return null;
-        }
-        const label = findLabel(meta.toc);
-        if (label) chapterTitle.textContent = label;
-      }
-    }
+  async function renderShelf(): Promise<void> {
+    const books = await getAllBooks();
+    const recentBooks = books.filter(b => b.lastReadAt).slice(0, 6);
+    const otherBooks = books.filter(b => !b.lastReadAt);
 
-    // 更新进度条
-    const total = state.chapterHrefs.length;
-    const pct = total > 0 ? Math.round(((idx + 1) / total) * 100) : 0;
-    topbarProgressBar.style.width = `${pct}%`;
-    topbarProgressText.textContent = `${idx + 1}/${total} (${pct}%)`;
-
-    // 高亮目录当前项
-    tocList.querySelectorAll('a').forEach((a, i) => {
-      a.classList.toggle('active', i === idx);
-    });
-  });
-
-  // ── 书签刷新 ──
-  async function refreshBookmarks(): Promise<void> {
-    const bookmarks = await getCurrentBookmarks();
-    bookmarksList.innerHTML = '';
-
-    if (bookmarks.length === 0) {
-      const empty = document.createElement('span');
-      empty.style.cssText = 'padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--text-muted);';
-      empty.textContent = '暂无书签';
-      bookmarksList.appendChild(empty);
+    if (books.length === 0) {
+      shelfEmpty.style.display = 'flex';
+      recentSection.style.display = 'none';
+      allSection.style.display = 'none';
       return;
     }
 
-    for (const bm of bookmarks) {
-      const div = document.createElement('div');
-      div.className = 'bookmark-item';
+    shelfEmpty.style.display = 'none';
 
-      const textSpan = document.createElement('span');
-      textSpan.className = 'bookmark-text';
-      textSpan.textContent = bm.text;
-      textSpan.addEventListener('click', async () => {
-        const hrefs = getReaderState().chapterHrefs;
-        const idx = hrefs.indexOf(bm.chapterHref);
-        if (idx >= 0) {
-          await goToChapter(idx, readerContainer);
-          readerContainer.scrollTop = bm.scrollY;
-        }
-      });
-
-      const delBtn = document.createElement('button');
-      delBtn.className = 'bookmark-delete';
-      delBtn.innerHTML = '×';
-      delBtn.title = '删除书签';
-      delBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (bm.id !== undefined) {
-          await removeBookmark(bm.id);
-          refreshBookmarks();
-        }
-      });
-
-      div.appendChild(textSpan);
-      div.appendChild(delBtn);
-      bookmarksList.appendChild(div);
+    if (recentBooks.length > 0) {
+      recentSection.style.display = 'block';
+      recentGrid.innerHTML = recentBooks.map(b => renderCard(b)).join('');
+    } else {
+      recentSection.style.display = 'none';
     }
+
+    const all = [...recentBooks, ...otherBooks];
+    allSection.style.display = 'block';
+    allGrid.innerHTML = all.map(b => renderCard(b)).join('');
+
+    // 绑定卡片事件
+    bindCardEvents();
   }
 
-  on('bookmarks-updated', () => {
-    refreshBookmarks();
-  });
+  function renderCard(b: BookMeta): string {
+    const displayTitle = b.customTitle || b.title;
+    const displayAuthor = b.customAuthor || b.author;
 
-  // ── 书架加载 ──
-  async function loadBookshelf(): Promise<void> {
-    const books = await getAllBooks();
-    bookshelfList.innerHTML = '';
+    // 基于 id 生成渐变色
+    let h = 0;
+    for (let i = 0; i < b.id.length; i++) h = ((h << 5) - h) + b.id.charCodeAt(i) | 0;
+    const hue = Math.abs(h) % 360;
+    const c1 = `hsl(${hue}, 40%, 25%)`;
+    const c2 = `hsl(${(hue + 40) % 360}, 35%, 20%)`;
 
-    if (books.length === 0) return;
+    const coverHtml = b.cover
+      ? `<img src="${escapeHtml(b.cover)}" alt="" loading="lazy" />`
+      : `<div class="book-cover-placeholder" style="background:linear-gradient(135deg,${c1},${c2})"><span class="book-cover-letter">${escapeHtml(displayTitle.charAt(0))}</span></div>`;
 
-    for (const book of books.reverse()) {
-      const div = document.createElement('div');
-      div.className = 'bookshelf-item';
+    const pct = b.lastChapterId && b.totalChapters > 0
+      ? Math.round((Math.min(1, (Number(b.lastChapterId) + 1) / b.totalChapters)) * 100)
+      : 0;
+    const progressText = b.lastReadAt ? `${pct}%` : '新书';
 
-      const cover = document.createElement('div');
-      cover.className = 'bookshelf-cover';
-      if (book.cover) {
-        cover.innerHTML = `<img src="${escapeHtml(book.cover)}" alt="封面" />`;
-      } else {
-        cover.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
-      }
+    return `
+      <div class="book-card" data-book-id="${escapeHtml(b.id)}" data-format="${b.format}">
+        <a href="/reader/read?id=${escapeHtml(b.id)}" class="book-card-link">
+          <div class="book-cover">${coverHtml}</div>
+          <div class="book-info">
+            <div class="book-title" title="${escapeHtml(displayTitle)}">${escapeHtml(displayTitle)}</div>
+            <div class="book-meta">
+              <span>${escapeHtml(displayAuthor)}</span>
+              <span class="book-format">${b.format.toUpperCase()}</span>
+            </div>
+            <div class="book-progress">
+              <div class="book-progress-bar"><div class="book-progress-fill" style="width:${pct}%"></div></div>
+              <span class="book-progress-text">${progressText}</span>
+            </div>
+          </div>
+        </a>
+      </div>`;
+  }
 
-      const info = document.createElement('div');
-      info.className = 'bookshelf-info';
-      info.innerHTML = `<div class="bookshelf-title">${escapeHtml(book.title)}</div><div class="bookshelf-author">${escapeHtml(book.author)} · ${book.format.toUpperCase()}</div>`;
-
-      div.appendChild(cover);
-      div.appendChild(info);
-
-      div.addEventListener('click', async () => {
-        if (book.id !== undefined) {
-          await restoreBook(book.id, book.fileData, book.format);
-        }
+  function bindCardEvents(): void {
+    // 右键菜单 / 长按
+    document.querySelectorAll('.book-card').forEach(card => {
+      card.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        openMetaEditor((card as HTMLElement).dataset.bookId!);
       });
-
-      bookshelfList.appendChild(div);
-    }
+      // 移动端长按
+      let timer: ReturnType<typeof setTimeout>;
+      card.addEventListener('touchstart', () => {
+        const id = (card as HTMLElement).dataset.bookId!;
+        timer = setTimeout(() => openMetaEditor(id), 600);
+      });
+      card.addEventListener('touchend', () => clearTimeout(timer));
+      card.addEventListener('touchmove', () => clearTimeout(timer));
+    });
   }
 
   function escapeHtml(text: string): string {
@@ -411,6 +342,150 @@ import '../styles/tokens.css';
     return text.replace(/[&<>"']/g, ch => map[ch] ?? ch);
   }
 
-  loadBookshelf();
-  on('book-loaded', () => loadBookshelf());
+  // ── 元数据编辑 ──
+  let editingBookId: string | null = null;
+  const metaOverlay = document.getElementById('meta-editor-overlay')!;
+
+  function openMetaEditor(bookId: string): void {
+    editingBookId = bookId;
+    getAllBooks().then(books => {
+      const book = books.find(b => b.id === bookId);
+      if (!book) return;
+      (document.getElementById('meta-title') as HTMLInputElement).value = book.customTitle || book.title;
+      (document.getElementById('meta-author') as HTMLInputElement).value = book.customAuthor || book.author;
+      (document.getElementById('meta-description') as HTMLTextAreaElement).value = book.description || '';
+      metaOverlay.style.display = 'flex';
+    });
+  }
+
+  document.getElementById('meta-editor-close')!.addEventListener('click', () => {
+    metaOverlay.style.display = 'none';
+  });
+
+  document.getElementById('meta-save')!.addEventListener('click', async () => {
+    if (!editingBookId) return;
+    const customTitle = (document.getElementById('meta-title') as HTMLInputElement).value.trim();
+    const customAuthor = (document.getElementById('meta-author') as HTMLInputElement).value.trim();
+    const description = (document.getElementById('meta-description') as HTMLTextAreaElement).value.trim();
+    await updateBookMeta(editingBookId, { customTitle: customTitle || undefined, customAuthor: customAuthor || undefined, description: description || undefined });
+    metaOverlay.style.display = 'none';
+    showToast('元数据已保存', 'success');
+    renderShelf();
+  });
+
+  document.getElementById('meta-delete')!.addEventListener('click', async () => {
+    if (!editingBookId) return;
+    if (!confirm('确定要删除此书吗？书籍内容和所有书签/高亮都会被删除。')) return;
+    await deleteBook(editingBookId);
+    metaOverlay.style.display = 'none';
+    showToast('已删除', 'info');
+    renderShelf();
+  });
+
+  metaOverlay.addEventListener('click', (e) => {
+    if (e.target === metaOverlay) metaOverlay.style.display = 'none';
+  });
+
+  // ── 导入 ──
+  const fileInput = document.getElementById('file-input') as HTMLInputElement;
+  const importBtn = document.getElementById('import-btn')!;
+  const dropOverlay = document.getElementById('drop-overlay')!;
+  let dragCounter = 0;
+
+  importBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    for (const f of fileInput.files ?? []) await importFile(f);
+    fileInput.value = '';
+  });
+
+  document.addEventListener('dragover', e => { e.preventDefault(); });
+  document.addEventListener('dragenter', () => {
+    dragCounter++;
+    if (dragCounter === 1) dropOverlay.style.display = 'flex';
+  });
+  document.addEventListener('dragleave', () => {
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; dropOverlay.style.display = 'none'; }
+  });
+  document.addEventListener('drop', async e => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.style.display = 'none';
+    for (const f of e.dataTransfer?.files ?? []) await importFile(f);
+  });
+
+  async function importFile(file: File): Promise<void> {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'epub' && ext !== 'txt') {
+      showToast(`不支持的文件格式：${ext || '未知'}`, 'error');
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      showToast('文件过大（超过 50MB）', 'error');
+      return;
+    }
+
+    // 去重
+    const hash = await calcHash(file);
+    const existing = await findByHash(hash);
+    if (existing) {
+      showToast(`《${existing.customTitle || existing.title}》已在书架中`, 'info');
+      return;
+    }
+
+    showToast('正在解析...', 'info');
+
+    try {
+      const bookId = crypto.randomUUID();
+
+      if (file.name.endsWith('.epub')) {
+        const data = await parseEpub(file);
+        const meta: BookMeta = {
+          id: bookId, hash, title: data.title, author: data.author,
+          cover: data.cover, format: 'epub', totalChapters: data.chapters.length,
+          addedAt: Date.now(),
+        };
+        await saveBook(meta);
+
+        const chapters: Chapter[] = data.chapters.map((c, i) => ({
+          id: `${bookId}-${i}`,
+          bookId,
+          index: c.index,
+          title: c.title,
+          content: c.content,
+          depth: c.depth,
+        }));
+        await saveChapters(chapters);
+        showToast(`已导入：${data.title}（${data.chapters.length} 章）`, 'success');
+      } else {
+        const text = await file.text();
+        const data = parseTxt(text, file.name);
+        const meta: BookMeta = {
+          id: bookId, hash, title: data.title, author: data.author,
+          format: 'txt', totalChapters: data.chapters.length, addedAt: Date.now(),
+        };
+        await saveBook(meta);
+
+        const chapters: Chapter[] = data.chapters.map((c, i) => ({
+          id: `${bookId}-${i}`,
+          bookId,
+          index: c.index,
+          title: c.title,
+          content: c.content,
+          depth: 0,
+        }));
+        await saveChapters(chapters);
+        showToast(`已导入：${data.title}（${data.chapters.length} 章）`, 'success');
+      }
+
+      renderShelf();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '解析失败';
+      showToast(`导入失败：${msg}`, 'error');
+      console.error('importFile error:', err);
+    }
+  }
+
+  // 初始渲染
+  renderShelf();
 </script>

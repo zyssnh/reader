@@ -1,0 +1,73 @@
+---
+/**
+ * Content 组件
+ * 阅读内容区，单列显示，禁止多列
+ */
+---
+
+<main class="read-content-wrapper">
+  <div class="read-content" id="read-content">
+    <div class="read-content-empty" id="read-content-empty">
+      <p>加载中...</p>
+    </div>
+  </div>
+</main>
+
+<style>
+  .read-content-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+    padding: var(--space-8) var(--space-4);
+  }
+
+  .read-content {
+    max-width: var(--reader-width, 640px);
+    width: 100%;
+    /* 关键：防止浏览器自动多列 */
+    column-count: 1 !important;
+    columns: unset !important;
+  }
+
+  .read-content-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+  }
+
+  .read-content :global(p) {
+    margin-bottom: calc(var(--para-spacing, 1.2) * 1em);
+    line-height: var(--line-height, 1.8);
+    font-size: var(--font-size, 18px);
+    font-family: var(--reader-font, var(--font-sans));
+    text-indent: var(--text-indent, 0);
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    letter-spacing: normal;
+    color: var(--text-primary);
+    text-align: justify;
+  }
+
+  .read-content :global(h1),
+  .read-content :global(h2),
+  .read-content :global(h3) {
+    font-family: var(--reader-font, var(--font-sans));
+    color: var(--text-primary);
+    margin: var(--space-4) 0 var(--space-2);
+    column-count: unset !important;
+    columns: unset !important;
+  }
+
+  .read-content :global(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+  }
+</style>
