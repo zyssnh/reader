@@ -75,8 +75,17 @@
     columns: unset !important;
   }
 
-  .toc-list .toc-item.depth-1 { padding-left: 28px; font-size: 12px; }
-  .toc-list .toc-item.depth-2 { padding-left: 40px; font-size: 11px; }
+  /* 层级缩进 + 字号递减 */
+  .toc-list .toc-item.depth-0 { padding-left: var(--space-4); font-size: 13px; font-weight: 600; }
+  .toc-list .toc-item.depth-1 { padding-left: calc(var(--space-4) + var(--space-4)); font-size: 12px; }
+  .toc-list .toc-item.depth-2 { padding-left: calc(var(--space-4) + var(--space-6)); font-size: 11px; }
+
+  /* 顶级章节之间用分隔线分隔（仅在depth=0之间） */
+  .toc-list .toc-item.depth-0 + .toc-item.depth-0 {
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-1);
+    padding-top: calc(var(--space-1) + var(--space-1));
+  }
 
   .toc-list .toc-item:hover {
     background: var(--bg-card);

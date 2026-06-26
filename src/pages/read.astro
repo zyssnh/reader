@@ -219,20 +219,27 @@ import '../styles/tokens.css';
       console.warn(`${emptyChapters.length}/${chapters.length} 章节内容为空`);
     }
 
+    // 恢复 TOC 结构
+    let tocEntries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof tocEntries }> = [];
+    try {
+      if (book.tocJson) {
+        tocEntries = JSON.parse(book.tocJson);
+      }
+    } catch { /* ignore corrupted toc json */ }
+
+    // 如果无 TOC 结构，从章节直接生成
+    if (tocEntries.length === 0) {
+      tocEntries = chapters.map((ch, i) => ({
+        chapterIndex: i,
+        title: ch.title,
+        depth: ch.depth,
+      }));
+    }
+
     tocCount.textContent = String(chapters.length);
 
-    // 构建 TOC
-    tocList.innerHTML = chapters.map((ch, i) =>
-      `<button class="toc-item depth-${ch.depth} ${i === currentIndex ? 'active' : ''}" data-idx="${i}">${escapeHtml(ch.title)}</button>`
-    ).join('');
-
-    // 绑定 TOC 点击
-    tocList.querySelectorAll('.toc-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const idx = Number((el as HTMLElement).dataset.idx);
-        if (!isNaN(idx)) goToChapter(idx);
-      });
-    });
+    // 构建层级化 TOC DOM
+    renderToc(tocEntries, currentIndex);
 
     // 恢复进度
     if (book.lastChapterId) {
@@ -246,6 +253,7 @@ import '../styles/tokens.css';
           });
         }
         updateTopbarProgress();
+        highlightTocItem(currentIndex);
         return;
       }
     }
@@ -256,6 +264,48 @@ import '../styles/tokens.css';
   }
 
   // ── 章节导航 ──
+
+  /** 递归渲染层级化 TOC 到 DOM */
+  function renderToc(
+    entries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof entries }>,
+    activeIdx: number,
+    container?: HTMLElement,
+  ): void {
+    const parent = container ?? tocList;
+    parent.innerHTML = '';
+
+    function build(items: typeof entries, level: number): DocumentFragment {
+      const frag = document.createDocumentFragment();
+      for (const item of items) {
+        const d = Math.min(item.depth, level > 0 ? Math.min(item.depth + 1, 2) : 0);
+        const btn = document.createElement('button');
+        btn.className = `toc-item depth-${d}${item.chapterIndex === activeIdx ? ' active' : ''}`;
+        btn.dataset.idx = String(item.chapterIndex);
+        btn.textContent = item.title;
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.dataset.idx);
+          if (!isNaN(idx)) goToChapter(idx);
+        });
+        frag.appendChild(btn);
+
+        // 递归渲染子节点
+        if (item.children && item.children.length > 0) {
+          frag.appendChild(build(item.children, level + 1));
+        }
+      }
+      return frag;
+    }
+
+    parent.appendChild(build(entries, 0));
+  }
+
+  /** 高亮 TOC 中当前章节 */
+  function highlightTocItem(index: number): void {
+    tocList.querySelectorAll('.toc-item').forEach(el => {
+      el.classList.toggle('active', Number((el as HTMLElement).dataset.idx) === index);
+    });
+  }
+
   async function goToChapter(index: number): Promise<void> {
     if (index < 0 || index >= chapters.length) return;
 
@@ -270,9 +320,7 @@ import '../styles/tokens.css';
     readContent.parentElement!.scrollTop = 0;
 
     // 更新 TOC 高亮
-    tocList.querySelectorAll('.toc-item').forEach((el, i) => {
-      el.classList.toggle('active', i === index);
-    });
+    highlightTocItem(index);
   }
 
   function renderChapter(index: number): void {

@@ -591,6 +591,7 @@ import '../styles/tokens.css';
           id: bookId, hash, title: data.title, author: data.author,
           cover: data.cover, format: 'epub', totalChapters: data.chapters.length,
           addedAt: Date.now(),
+          tocJson: data.toc.length > 0 ? JSON.stringify(data.toc) : undefined,
         };
         await saveBook(meta);
 
