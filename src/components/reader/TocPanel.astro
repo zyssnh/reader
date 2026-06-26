@@ -1,115 +1,332 @@
 ---
 /**
- * TocPanel 组件
- * 左侧目录面板，可收起
+ * TocPanel — 极简阅读器目录
+ *
+ * 设计参考：Apple Books / Kindle / VS Code Sidebar
+ * 桌面：320px 侧边栏
+ * 移动端：85vw 覆盖式 Drawer + 遮罩
  */
 ---
 
-<aside class="toc-panel" id="toc-panel">
+<!-- 移动端遮罩 -->
+<div class="toc-backdrop" id="toc-backdrop" aria-hidden="true"></div>
+
+<aside class="toc-panel" id="toc-panel" role="complementary" aria-label="目录">
+  <div class="toc-drag-handle" aria-hidden="true"></div>
   <div class="toc-header">
     <span class="toc-title">目录</span>
-    <span class="toc-count" id="toc-count"></span>
+    <span class="toc-meta">
+      <span class="toc-count" id="toc-count"></span>
+      <button class="toc-close-btn" id="toc-close-btn" aria-label="关闭目录" title="关闭目录">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/>
+        </svg>
+      </button>
+    </span>
   </div>
-  <nav class="toc-list" id="toc-list" aria-label="目录导航"></nav>
+  <nav class="toc-nav" id="toc-nav" aria-label="章节目录">
+    <ul class="toc-tree" id="toc-tree" role="tree"></ul>
+  </nav>
 </aside>
 
 <style>
+  /* ═══════════════════════════════════════════
+     遮罩
+     ═══════════════════════════════════════════ */
+  .toc-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 149;
+  }
+
+  /* ═══════════════════════════════════════════
+     面板主体
+     ═══════════════════════════════════════════ */
   .toc-panel {
-    width: 220px;
-    min-width: 220px;
-    background: var(--bg-surface);
-    border-right: 1px solid var(--border);
+    width: 320px;
+    min-width: 320px;
+    background: var(--bg-surface, #181A1F);
+    border-right: 1px solid var(--border, #30363d);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     flex-shrink: 0;
+    z-index: 150;
   }
 
+  /* 拖拽手柄（移动端） */
+  .toc-drag-handle {
+    display: none;
+    width: 32px;
+    height: 4px;
+    margin: var(--space-2, 8px) auto 0;
+    border-radius: 2px;
+    background: var(--text-muted, #484f58);
+    opacity: 0.4;
+  }
+
+  /* ═══════════════════════════════════════════
+     头部
+     ═══════════════════════════════════════════ */
   .toc-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--border);
-    height: 32px;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-bottom: 1px solid var(--border, #30363d);
+    flex-shrink: 0;
   }
 
   .toc-title {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    color: var(--text-secondary);
-    text-transform: lowercase;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary, #E5E7EB);
+    letter-spacing: 0.02em;
+  }
+
+  .toc-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
   }
 
   .toc-count {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: var(--text-muted, #6B7280);
+    letter-spacing: 0.06em;
   }
 
-  .toc-list {
+  .toc-close-btn {
+    display: none;            /* 移动端显示 */
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--radius, 6px);
+    background: transparent;
+    color: var(--text-secondary, #9CA3AF);
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+
+  .toc-close-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary, #E5E7EB);
+  }
+
+  /* ═══════════════════════════════════════════
+     导航滚动区
+     ═══════════════════════════════════════════ */
+  .toc-nav {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-1) 0;
+    overscroll-behavior: contain;
+    padding: var(--space-1, 4px) 0;
   }
 
-  .toc-list .toc-item {
-    display: block;
+  .toc-nav::-webkit-scrollbar { width: 4px; }
+  .toc-nav::-webkit-scrollbar-thumb {
+    background: var(--text-muted, #484f58);
+    border-radius: 2px;
+  }
+
+  /* ═══════════════════════════════════════════
+     Tree — 语义 UL/LI 结构
+     ═══════════════════════════════════════════ */
+  .toc-tree,
+  .toc-tree ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* ── 每个条目是一行 ── */
+  .toc-tree li {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .toc-row {
+    display: flex;
+    align-items: center;
     width: 100%;
-    padding: var(--space-1) var(--space-4);
-    border: none;
-    border-left: 2px solid transparent;
-    background: transparent;
-    color: var(--text-secondary);
-    font-family: var(--font-sans);
-    font-size: 13px;
-    line-height: 1.4;
-    text-align: left;
+    min-height: 40px;
+    padding: 0 var(--space-4, 16px);
     cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.08s ease;
+    outline: none;
+  }
+
+  .toc-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .toc-row:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--accent-blue, #2563EB);
+  }
+
+  /* ── 展开/折叠 Chevron ── */
+  .toc-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-right: 4px;
+    color: var(--text-muted, #6B7280);
+    transition: transform 0.15s ease;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 0;
+    border-radius: 3px;
+  }
+
+  .toc-chevron:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary, #E5E7EB);
+  }
+
+  .toc-chevron.expanded {
+    transform: rotate(90deg);
+  }
+
+  .toc-chevron svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* 叶子节点占位（无 chevron 时对齐） */
+  .toc-chevron-placeholder {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  /* ── 章节文字 ── */
+  .toc-label {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-secondary, #9CA3AF);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    transition: all 0.15s ease;
-    column-count: 1 !important;
-    columns: unset !important;
+    flex: 1;
+    min-width: 0;
   }
 
-  /* 层级缩进 + 字号递减 */
-  .toc-list .toc-item.depth-0 { padding-left: var(--space-4); font-size: 13px; font-weight: 600; }
-  .toc-list .toc-item.depth-1 { padding-left: calc(var(--space-4) + var(--space-4)); font-size: 12px; }
-  .toc-list .toc-item.depth-2 { padding-left: calc(var(--space-4) + var(--space-6)); font-size: 11px; }
-
-  /* 顶级章节之间用分隔线分隔（仅在depth=0之间） */
-  .toc-list .toc-item.depth-0 + .toc-item.depth-0 {
-    border-top: 1px solid var(--border);
-    margin-top: var(--space-1);
-    padding-top: calc(var(--space-1) + var(--space-1));
+  /* 0 级（卷/部）— 粗体 */
+  .toc-row.depth-0 .toc-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary, #E5E7EB);
   }
 
-  .toc-list .toc-item:hover {
-    background: var(--bg-card);
-    color: var(--text-primary);
+  /* 1 级（章）— 正常 */
+  .toc-row.depth-1 .toc-label { font-size: 14px; }
+  .toc-row.depth-1 { padding-left: calc(var(--space-4, 16px) + 20px + 4px); }
+
+  /* 2 级（节）— 缩小 */
+  .toc-row.depth-2 .toc-label { font-size: 13px; }
+  .toc-row.depth-2 {
+    padding-left: calc(var(--space-4, 16px) + 20px + 4px + var(--space-4, 16px));
   }
 
-  .toc-list .toc-item.active {
-    border-left-color: var(--accent-blue);
-    color: var(--accent-blue);
-    background: rgba(88, 166, 255, 0.08);
+  /* ── 当前章节高亮 ── */
+  .toc-row.active {
+    background: rgba(37, 99, 235, 0.12);
   }
 
-  /* 响应式 */
+  .toc-row.active .toc-label {
+    color: var(--accent-blue, #2563EB);
+    font-weight: 500;
+  }
+
+  /* active 的 depth-0 更强 */
+  .toc-row.depth-0.active .toc-label {
+    font-weight: 700;
+  }
+
+  /* ── 子列表折叠 ── */
+  .toc-children {
+    overflow: hidden;
+  }
+
+  .toc-children.collapsed {
+    display: none;
+  }
+
+  /* ═══════════════════════════════════════════
+     Desktop：inline 侧边栏（默认显示）
+     ═══════════════════════════════════════════ */
+  @media (min-width: 769px) {
+    .toc-backdrop { display: none !important; }
+    .toc-close-btn { display: none; }
+  }
+
+  /* ═══════════════════════════════════════════
+     移动端：覆盖式 Drawer
+     ═══════════════════════════════════════════ */
   @media (max-width: 768px) {
     .toc-panel {
       position: fixed;
+      top: 0;
       left: 0;
-      top: 44px;
       bottom: 0;
-      z-index: 100;
+      width: 85vw;
+      min-width: unset;
+      max-width: 360px;
       transform: translateX(-100%);
-      transition: transform 0.2s ease;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 150;
+      box-shadow: none;
     }
 
-    .toc-panel.open { transform: translateX(0); }
+    .toc-panel.open {
+      transform: translateX(0);
+      box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+    }
+
+    .toc-backdrop.show {
+      display: block;
+    }
+
+    .toc-drag-handle { display: block; }
+    .toc-close-btn { display: flex; }
+
+    .toc-row { min-height: 48px; }
   }
 </style>
+
+<script>
+  // 移动端关闭按钮
+  const panel = document.getElementById('toc-panel')!;
+  const backdrop = document.getElementById('toc-backdrop')!;
+  const closeBtn = document.getElementById('toc-close-btn')!;
+
+  function closeToc(): void {
+    panel.classList.remove('open');
+    backdrop.classList.remove('show');
+  }
+
+  function openToc(): void {
+    panel.classList.add('open');
+    backdrop.classList.add('show');
+  }
+
+  closeBtn.addEventListener('click', closeToc);
+  backdrop.addEventListener('click', closeToc);
+
+  // 暴露打开/关闭方法给 read.astro 使用
+  (window as any).__tocOpen = openToc;
+  (window as any).__tocClose = closeToc;
+  (window as any).__tocIsOpen = () => panel.classList.contains('open') || window.innerWidth > 768;
+</script>

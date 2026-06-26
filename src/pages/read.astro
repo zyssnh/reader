@@ -141,7 +141,8 @@ import '../styles/tokens.css';
 
   // ── DOM ──
   const tocPanel = document.getElementById('toc-panel')!;
-  const tocList = document.getElementById('toc-list')!;
+  const tocTree = document.getElementById('toc-tree')!;
+  const tocNav = document.getElementById('toc-nav')!;
   const tocCount = document.getElementById('toc-count')!;
   const readContent = document.getElementById('read-content')!;
   const contentEmpty = document.getElementById('read-content-empty')!;
@@ -265,46 +266,236 @@ import '../styles/tokens.css';
 
   // ── 章节导航 ──
 
-  /** 递归渲染层级化 TOC 到 DOM */
+  /**
+   * 递归构建语义化 TOC 树
+   * 使用 <ul>/<li>/<button> 结构，
+   * 父节点带 chevron 展开/折叠，
+   * 默认全展开。
+   */
   function renderToc(
     entries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof entries }>,
     activeIdx: number,
-    container?: HTMLElement,
   ): void {
-    const parent = container ?? tocList;
-    parent.innerHTML = '';
+    tocTree.innerHTML = '';
 
-    function build(items: typeof entries, level: number): DocumentFragment {
-      const frag = document.createDocumentFragment();
+    function buildTree(items: typeof entries, level: number): HTMLUListElement {
+      const ul = document.createElement('ul');
+      ul.setAttribute('role', 'group');
+
       for (const item of items) {
-        const d = Math.min(item.depth, level > 0 ? Math.min(item.depth + 1, 2) : 0);
-        const btn = document.createElement('button');
-        btn.className = `toc-item depth-${d}${item.chapterIndex === activeIdx ? ' active' : ''}`;
-        btn.dataset.idx = String(item.chapterIndex);
-        btn.textContent = item.title;
-        btn.addEventListener('click', () => {
-          const idx = Number(btn.dataset.idx);
-          if (!isNaN(idx)) goToChapter(idx);
-        });
-        frag.appendChild(btn);
+        const hasChildren = item.children && item.children.length > 0;
+        const depth = Math.min(item.depth, 2);
+        const isActive = item.chapterIndex === activeIdx;
 
-        // 递归渲染子节点
-        if (item.children && item.children.length > 0) {
-          frag.appendChild(build(item.children, level + 1));
+        const li = document.createElement('li');
+        li.setAttribute('role', 'treeitem');
+        li.setAttribute('aria-level', String(level + 1));
+        if (isActive) li.setAttribute('aria-current', 'true');
+
+        // ── 行容器 ──
+        const row = document.createElement('div');
+        row.className = `toc-row depth-${depth}${isActive ? ' active' : ''}`;
+        row.tabIndex = -1;  // 由键盘事件统一管理
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', item.title);
+        row.dataset.idx = String(item.chapterIndex);
+
+        // Chevron（可折叠的父节点）
+        if (hasChildren) {
+          const chevron = document.createElement('button');
+          chevron.className = 'toc-chevron expanded';
+          chevron.setAttribute('aria-expanded', 'true');
+          chevron.setAttribute('aria-label', `折叠 ${item.title}`);
+          chevron.tabIndex = -1;
+          chevron.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"/></svg>`;
+          chevron.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleNode(chevron, li);
+          });
+          row.appendChild(chevron);
+        } else {
+          const placeholder = document.createElement('span');
+          placeholder.className = 'toc-chevron-placeholder';
+          placeholder.setAttribute('aria-hidden', 'true');
+          row.appendChild(placeholder);
         }
+
+        // 章节标签
+        const label = document.createElement('span');
+        label.className = 'toc-label';
+        label.textContent = item.title;
+        row.appendChild(label);
+
+        // 点击跳转
+        row.addEventListener('click', () => {
+          const idx = Number(row.dataset.idx);
+          if (!isNaN(idx)) {
+            goToChapter(idx);
+            // 移动端自动关闭目录
+            if (window.innerWidth <= 768) closeToc();
+          }
+        });
+
+        li.appendChild(row);
+
+        // 子章节
+        if (hasChildren) {
+          const childUl = buildTree(item.children!, level + 1);
+          childUl.classList.add('toc-children');
+          li.appendChild(childUl);
+        }
+
+        ul.appendChild(li);
       }
-      return frag;
+      return ul;
     }
 
-    parent.appendChild(build(entries, 0));
+    tocTree.appendChild(buildTree(entries, 0));
   }
 
-  /** 高亮 TOC 中当前章节 */
-  function highlightTocItem(index: number): void {
-    tocList.querySelectorAll('.toc-item').forEach(el => {
-      el.classList.toggle('active', Number((el as HTMLElement).dataset.idx) === index);
-    });
+  /** 折叠/展开父节点 */
+  function toggleNode(chevron: HTMLElement, li: HTMLElement): void {
+    const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
+    if (!childUl) return;
+
+    const isExpanded = chevron.classList.contains('expanded');
+    if (isExpanded) {
+      chevron.classList.remove('expanded');
+      chevron.setAttribute('aria-expanded', 'false');
+      chevron.setAttribute('aria-label', chevron.getAttribute('aria-label')!.replace('折叠', '展开'));
+      childUl.classList.add('collapsed');
+    } else {
+      chevron.classList.add('expanded');
+      chevron.setAttribute('aria-expanded', 'true');
+      chevron.setAttribute('aria-label', chevron.getAttribute('aria-label')!.replace('展开', '折叠'));
+      childUl.classList.remove('collapsed');
+    }
   }
+
+  /** 高亮当前章节 */
+  function highlightTocItem(index: number): void {
+    // 移除旧 active
+    tocTree.querySelectorAll('.toc-row.active').forEach(el => {
+      el.classList.remove('active');
+      el.closest('li')?.removeAttribute('aria-current');
+    });
+
+    // 设置新 active
+    const row = tocTree.querySelector(`.toc-row[data-idx="${index}"]`) as HTMLElement | null;
+    if (row) {
+      row.classList.add('active');
+      row.closest('li')?.setAttribute('aria-current', 'true');
+
+      // 确保所有祖先节点展开
+      let parent = row.closest('.toc-children') as HTMLElement | null;
+      while (parent) {
+        parent.classList.remove('collapsed');
+        const chevron = parent.closest('li')?.querySelector('.toc-chevron') as HTMLElement | null;
+        if (chevron) {
+          chevron.classList.add('expanded');
+          chevron.setAttribute('aria-expanded', 'true');
+        }
+        parent = parent.closest('.toc-children') as HTMLElement | null;
+      }
+    }
+  }
+
+  /** 自动滚动到当前章节（居中） */
+  function scrollTocToCurrent(): void {
+    const row = tocTree.querySelector('.toc-row.active') as HTMLElement | null;
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+
+  /** 关闭目录（移动端） */
+  function closeToc(): void {
+    (window as any).__tocClose?.();
+  }
+
+  /** 打开目录 */
+  function openToc(): void {
+    (window as any).__tocOpen?.();
+    // 打开后滚动到当前章节
+    requestAnimationFrame(() => scrollTocToCurrent());
+  }
+
+  // ── TOC 键盘导航 ──
+  tocNav.addEventListener('keydown', (e) => {
+    const rows = Array.from(tocTree.querySelectorAll('.toc-row')) as HTMLElement[];
+    if (rows.length === 0) return;
+
+    const focused = document.activeElement as HTMLElement;
+    const idx = rows.indexOf(focused as HTMLElement);
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault();
+        const next = idx < rows.length - 1 ? rows[idx + 1] : rows[0];
+        next.focus({ preventScroll: false });
+        next.scrollIntoView({ block: 'nearest' });
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const prev = idx > 0 ? rows[idx - 1] : rows[rows.length - 1];
+        prev.focus({ preventScroll: false });
+        prev.scrollIntoView({ block: 'nearest' });
+        break;
+      }
+      case 'Home': {
+        e.preventDefault();
+        rows[0].focus({ preventScroll: false });
+        rows[0].scrollIntoView({ block: 'start' });
+        break;
+      }
+      case 'End': {
+        e.preventDefault();
+        rows[rows.length - 1].focus({ preventScroll: false });
+        rows[rows.length - 1].scrollIntoView({ block: 'end' });
+        break;
+      }
+      case 'Enter':
+      case ' ': {
+        e.preventDefault();
+        // 点击当前聚焦的行
+        if (focused && rows.includes(focused)) {
+          focused.click();
+        }
+        break;
+      }
+      case 'ArrowRight': {
+        e.preventDefault();
+        // 展开当前节点的子节点
+        const li = focused?.closest('li');
+        if (li) {
+          const chevron = li.querySelector(':scope > .toc-row .toc-chevron') as HTMLElement | null;
+          const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
+          if (chevron && childUl && childUl.classList.contains('collapsed')) {
+            toggleNode(chevron, li);
+          }
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        e.preventDefault();
+        const li = focused?.closest('li');
+        if (li) {
+          const chevron = li.querySelector(':scope > .toc-row .toc-chevron') as HTMLElement | null;
+          const childUl = li.querySelector(':scope > .toc-children') as HTMLElement | null;
+          if (chevron && childUl && !childUl.classList.contains('collapsed')) {
+            toggleNode(chevron, li);
+          }
+        }
+        break;
+      }
+      case 'Escape': {
+        e.preventDefault();
+        closeToc();
+        break;
+      }
+    }
+  });
 
   async function goToChapter(index: number): Promise<void> {
     if (index < 0 || index >= chapters.length) return;
@@ -449,7 +640,19 @@ import '../styles/tokens.css';
 
   // ── 面板切换 ──
   document.getElementById('btn-toc')!.addEventListener('click', () => {
-    tocPanel.classList.toggle('open');
+    if (window.innerWidth <= 768) {
+      // 移动端：打开 + 滚动到当前
+      openToc();
+    } else {
+      // 桌面端：切换可见性
+      const visible = tocPanel.style.display !== 'none';
+      if (visible) {
+        tocPanel.style.display = 'none';
+      } else {
+        tocPanel.style.display = 'flex';
+        requestAnimationFrame(() => scrollTocToCurrent());
+      }
+    }
   });
 
   document.getElementById('btn-style')!.addEventListener('click', () => {
@@ -548,6 +751,13 @@ import '../styles/tokens.css';
 
   // ── 页面关闭前保存进度 ──
   window.addEventListener('beforeunload', () => saveProgress());
+
+  // ── 窗口 resize 时重置桌面 TOC 可见性 ──
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 768) {
+      tocPanel.style.display = 'flex';
+    }
+  });
 
   function escapeHtml(text: string): string {
     const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
