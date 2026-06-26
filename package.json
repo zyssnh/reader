@@ -1,0 +1,20 @@
+{
+  "name": "reader",
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5.0.0",
+    "epubjs": "^0.3.93",
+    "idb": "^7.1.1",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@astrojs/sitemap": "^3.1.0",
+    "@types/node": "^20.0.0"
+  }
+}

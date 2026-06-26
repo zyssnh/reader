@@ -1,0 +1,525 @@
+---
+/**
+ * SettingsPanel 组件
+ * 右侧设置面板：字号、行距、字体、主题、阅读宽度、开关项
+ */
+---
+
+<aside class="settings-panel" id="settings-panel" style="display:none;">
+  <div class="settings-header">
+    <span class="settings-title">reading settings</span>
+    <button class="settings-close" id="btn-settings-close" aria-label="关闭设置">✕</button>
+  </div>
+
+  <div class="settings-body">
+    <!-- 主题 -->
+    <div class="setting-group">
+      <label class="setting-label">theme</label>
+      <div class="theme-grid" id="theme-grid">
+        <button class="theme-swatch" data-theme="dark" aria-label="Dark 主题">
+          <span class="swatch-color" style="background:var(--bg-base);border:1px solid var(--border);"></span>
+          <span class="swatch-name">暗黑</span>
+        </button>
+        <button class="theme-swatch" data-theme="light" aria-label="Light 主题">
+          <span class="swatch-color" style="background:#ffffff;border:1px solid #d0d7de;"></span>
+          <span class="swatch-name">明亮</span>
+        </button>
+        <button class="theme-swatch" data-theme="sepia" aria-label="Sepia 主题">
+          <span class="swatch-color" style="background:#f4efe7;border:1px solid #c8b89a;"></span>
+          <span class="swatch-name">护眼</span>
+        </button>
+        <button class="theme-swatch" data-theme="hacker" aria-label="Hacker 主题">
+          <span class="swatch-color" style="background:#000000;border:1px solid #1a3a1a;"></span>
+          <span class="swatch-name">黑客</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 字号 -->
+    <div class="setting-group">
+      <label class="setting-label" for="range-font-size">
+        font size <span class="setting-value" id="val-font-size">16</span>
+      </label>
+      <input type="range" id="range-font-size" class="setting-range" min="12" max="28" value="16" step="1" />
+    </div>
+
+    <!-- 行距 -->
+    <div class="setting-group">
+      <label class="setting-label" for="range-line-height">
+        line height <span class="setting-value" id="val-line-height">1.8</span>
+      </label>
+      <input type="range" id="range-line-height" class="setting-range" min="1.4" max="2.2" value="1.8" step="0.1" />
+    </div>
+
+    <!-- 段落间距 -->
+    <div class="setting-group">
+      <label class="setting-label" for="range-para-spacing">
+        paragraph spacing <span class="setting-value" id="val-para-spacing">1.2</span>
+      </label>
+      <input type="range" id="range-para-spacing" class="setting-range" min="0" max="2" value="1.2" step="0.1" />
+    </div>
+
+    <!-- 字体 -->
+    <div class="setting-group">
+      <span class="setting-label">font family</span>
+      <div class="btn-group" id="font-group">
+        <button class="btn-option" data-value="serif">Serif</button>
+        <button class="btn-option" data-value="sans">Sans</button>
+        <button class="btn-option" data-value="mono">Mono</button>
+      </div>
+    </div>
+
+    <!-- 阅读宽度 -->
+    <div class="setting-group">
+      <span class="setting-label">page width</span>
+      <div class="btn-group" id="width-group">
+        <button class="btn-option" data-value="narrow">窄</button>
+        <button class="btn-option" data-value="medium">中</button>
+        <button class="btn-option" data-value="wide">宽</button>
+      </div>
+    </div>
+
+    <!-- 开关项 -->
+    <div class="setting-group">
+      <div class="setting-row">
+        <span class="setting-label">paragraph indent</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-indent" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">hyphenation</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-hyphenation" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">vertical mode</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-vertical" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 阅读统计 -->
+    <div class="setting-group">
+      <span class="setting-label">reading stats</span>
+      <div class="stats-grid" id="reading-stats">
+        <div class="stat-item">
+          <span class="stat-value" id="stat-chapters">-</span>
+          <span class="stat-label">章节</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="stat-progress">-</span>
+          <span class="stat-label">进度</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="stat-bookmarks">-</span>
+          <span class="stat-label">书签</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<style>
+  .settings-panel {
+    width: 260px;
+    min-width: 260px;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    height: 44px;
+  }
+
+  .settings-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: lowercase;
+  }
+
+  .settings-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+  }
+
+  .settings-close:hover {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+  }
+
+  .settings-body {
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .setting-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-transform: lowercase;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .setting-value {
+    font-family: var(--font-mono);
+    color: var(--accent-blue);
+  }
+
+  .setting-range {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--bg-card);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .setting-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    border: 2px solid var(--bg-surface);
+    cursor: pointer;
+  }
+
+  /* 主题色块 */
+  .theme-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+
+  .theme-swatch {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .theme-swatch:hover {
+    border-color: var(--border-strong);
+  }
+
+  .theme-swatch.active {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 1px var(--accent-blue);
+  }
+
+  .swatch-color {
+    width: 20px;
+    height: 20px;
+    border-radius: calc(var(--radius) - 2px);
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .swatch-name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+  }
+
+  /* 按钮组 */
+  .btn-group {
+    display: flex;
+    gap: 2px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2px;
+  }
+
+  .btn-option {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius) - 1px);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-option:hover {
+    color: var(--text-primary);
+  }
+
+  .btn-option.active {
+    background: var(--bg-surface);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
+
+  /* Toggle 开关 */
+  .toggle {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    cursor: pointer;
+  }
+
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: all 0.15s ease;
+  }
+
+  .toggle-slider::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all 0.15s ease;
+  }
+
+  .toggle input:checked + .toggle-slider {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+
+  .toggle input:checked + .toggle-slider::after {
+    background: var(--bg-surface);
+    transform: translateX(16px);
+  }
+
+  /* 统计 */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2);
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-2);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-blue);
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-transform: lowercase;
+    margin-top: 2px;
+  }
+</style>
+
+<script>
+  import {
+    loadSettings,
+    updateSetting,
+    getSettings,
+  } from '../scripts/settings';
+  import { on } from '../scripts/reader-core';
+
+  // ── 初始化 ──
+  async function init(): Promise<void> {
+    await loadSettings();
+    syncUI();
+    bindEvents();
+  }
+
+  function syncUI(): void {
+    const s = getSettings();
+
+    // 主题
+    document.querySelectorAll('.theme-swatch').forEach(el => {
+      const theme = (el as HTMLElement).dataset.theme;
+      el.classList.toggle('active', theme === s.theme);
+    });
+
+    // 范围滑块
+    const fontSizeRange = document.getElementById('range-font-size') as HTMLInputElement;
+    const lineHeightRange = document.getElementById('range-line-height') as HTMLInputElement;
+    const paraSpacingRange = document.getElementById('range-para-spacing') as HTMLInputElement;
+    fontSizeRange.value = String(s.fontSize);
+    lineHeightRange.value = String(s.lineHeight);
+    paraSpacingRange.value = String(s.paragraphSpacing);
+
+    document.getElementById('val-font-size')!.textContent = String(s.fontSize);
+    document.getElementById('val-line-height')!.textContent = String(s.lineHeight);
+    document.getElementById('val-para-spacing')!.textContent = String(s.paragraphSpacing);
+
+    // 字体按钮
+    document.querySelectorAll('#font-group .btn-option').forEach(el => {
+      const v = (el as HTMLElement).dataset.value;
+      el.classList.toggle('active', v === s.fontFamily);
+    });
+
+    // 宽度按钮
+    document.querySelectorAll('#width-group .btn-option').forEach(el => {
+      const v = (el as HTMLElement).dataset.value;
+      el.classList.toggle('active', v === s.readerWidth);
+    });
+
+    // Toggle
+    (document.getElementById('toggle-indent') as HTMLInputElement).checked = s.indent;
+    (document.getElementById('toggle-hyphenation') as HTMLInputElement).checked = s.hyphenation;
+    (document.getElementById('toggle-vertical') as HTMLInputElement).checked = s.vertical;
+  }
+
+  function bindEvents(): void {
+    // 主题
+    document.getElementById('theme-grid')?.addEventListener('click', (e) => {
+      const swatch = (e.target as HTMLElement).closest('.theme-swatch') as HTMLElement | null;
+      if (!swatch) return;
+      const theme = swatch.dataset.theme as 'dark' | 'light' | 'sepia' | 'hacker';
+      updateSetting('theme', theme);
+      document.querySelectorAll('.theme-swatch').forEach(el => el.classList.remove('active'));
+      swatch.classList.add('active');
+    });
+
+    // 范围滑块
+    document.getElementById('range-font-size')?.addEventListener('input', (e) => {
+      const val = Number((e.target as HTMLInputElement).value);
+      document.getElementById('val-font-size')!.textContent = String(val);
+      updateSetting('fontSize', val);
+    });
+
+    document.getElementById('range-line-height')?.addEventListener('input', (e) => {
+      const val = Number((e.target as HTMLInputElement).value);
+      document.getElementById('val-line-height')!.textContent = String(val);
+      updateSetting('lineHeight', val);
+    });
+
+    document.getElementById('range-para-spacing')?.addEventListener('input', (e) => {
+      const val = Number((e.target as HTMLInputElement).value);
+      document.getElementById('val-para-spacing')!.textContent = String(val);
+      updateSetting('paragraphSpacing', val);
+    });
+
+    // 字体按钮
+    document.getElementById('font-group')?.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.btn-option') as HTMLElement | null;
+      if (!btn) return;
+      const font = btn.dataset.value as 'serif' | 'sans' | 'mono';
+      updateSetting('fontFamily', font);
+      document.querySelectorAll('#font-group .btn-option').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+    });
+
+    // 宽度按钮
+    document.getElementById('width-group')?.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.btn-option') as HTMLElement | null;
+      if (!btn) return;
+      const width = btn.dataset.value as 'narrow' | 'medium' | 'wide';
+      updateSetting('readerWidth', width);
+      document.querySelectorAll('#width-group .btn-option').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+    });
+
+    // Toggle
+    document.getElementById('toggle-indent')?.addEventListener('change', (e) => {
+      updateSetting('indent', (e.target as HTMLInputElement).checked);
+    });
+    document.getElementById('toggle-hyphenation')?.addEventListener('change', (e) => {
+      updateSetting('hyphenation', (e.target as HTMLInputElement).checked);
+    });
+    document.getElementById('toggle-vertical')?.addEventListener('change', (e) => {
+      updateSetting('vertical', (e.target as HTMLInputElement).checked);
+    });
+  }
+
+  // 监听设置变更同步 UI（外部变更时）
+  on('settings-changed', () => {
+    syncUI();
+  });
+
+  // 监听书籍加载更新统计
+  on('book-loaded', (meta: unknown) => {
+    const m = meta as { chapters?: Array<unknown>; toc?: Array<unknown> };
+    const chapterCount = m.chapters?.length ?? m.toc?.length ?? 0;
+    document.getElementById('stat-chapters')!.textContent = String(chapterCount);
+  });
+
+  on('bookmarks-updated', async () => {
+    const { getCurrentBookmarks } = await import('../scripts/reader-core');
+    const bookmarks = await getCurrentBookmarks();
+    document.getElementById('stat-bookmarks')!.textContent = String(bookmarks.length);
+  });
+
+  init();
+</script>

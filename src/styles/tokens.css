@@ -1,0 +1,73 @@
+/* ── 极客主题 Dark（默认） ── */
+:root,
+[data-theme="dark"] {
+  --bg-base:    #0d1117;
+  --bg-surface: #161b22;
+  --bg-card:    #21262d;
+  --border:     #30363d;
+  --border-strong: #484f58;
+
+  --accent-blue:  #58a6ff;
+  --accent-green: #3fb950;
+  --accent-amber: #e3b341;
+  --accent-red:   #f85149;
+
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #484f58;
+
+  --font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  --font-serif: 'Georgia', 'Noto Serif SC', 'Source Han Serif', serif;
+  --font-sans:  -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  --radius: 6px;
+  --space-1: 4px; --space-2: 8px;  --space-3: 12px;
+  --space-4: 16px; --space-6: 24px; --space-8: 32px;
+
+  --reader-width: 640px;
+}
+
+[data-theme="light"] {
+  --bg-base:    #ffffff;
+  --bg-surface: #f6f8fa;
+  --bg-card:    #eaeef2;
+  --border:     #d0d7de;
+  --border-strong: #afb8c1;
+  --text-primary:   #1f2328;
+  --text-secondary: #636c76;
+  --text-muted:     #9198a1;
+}
+
+[data-theme="sepia"] {
+  --bg-base:    #f4efe7;
+  --bg-surface: #ede8de;
+  --bg-card:    #e3ddd2;
+  --border:     #c8b89a;
+  --border-strong: #a89070;
+  --text-primary:   #3b2f20;
+  --text-secondary: #7a6248;
+  --text-muted:     #a09070;
+  --accent-blue:  #5d7a9a;
+  --accent-green: #5a8050;
+}
+
+[data-theme="hacker"] {
+  --bg-base:    #000000;
+  --bg-surface: #0a0a0a;
+  --bg-card:    #111111;
+  --border:     #1a3a1a;
+  --border-strong: #2d5a2d;
+  --accent-blue:  #00ff41;
+  --accent-green: #00cc33;
+  --accent-amber: #aaff00;
+  --text-primary:   #00ff41;
+  --text-secondary: #00cc33;
+  --text-muted:     #005510;
+}
+
+/* ── 全局 Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-family: var(--font-sans); background: var(--bg-base); color: var(--text-primary); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }

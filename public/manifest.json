@@ -1,0 +1,24 @@
+{
+  "name": "Reader — 极客书房",
+  "short_name": "Reader",
+  "description": "极客风格电子书阅读器，支持 EPUB / TXT",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#161b22",
+  "start_url": "/reader/",
+  "scope": "/reader/",
+  "icons": [
+    {
+      "src": "/reader/icons/192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/reader/icons/512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

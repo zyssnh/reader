@@ -1,0 +1,261 @@
+---
+/**
+ * Sidebar 组件
+ * 左侧面板：目录 TOC、书签列表、文件上传
+ */
+---
+
+<aside class="sidebar" id="sidebar">
+  <!-- 上传区域 -->
+  <div class="sidebar-upload" id="sidebar-upload">
+    <label class="upload-label" for="file-input">
+      <div class="upload-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <span>拖拽或点击上传</span>
+      <span class="upload-hint">EPUB / TXT</span>
+    </label>
+    <input type="file" id="file-input" accept=".epub,.txt" hidden />
+  </div>
+
+  <!-- 书架列表 -->
+  <div class="sidebar-section" id="bookshelf-section">
+    <div class="sidebar-section-header">
+      <span class="sidebar-section-title">书架</span>
+    </div>
+    <div class="sidebar-list" id="bookshelf-list"></div>
+  </div>
+
+  <!-- 目录 -->
+  <div class="sidebar-section" id="toc-section" style="display:none;">
+    <div class="sidebar-section-header">
+      <span class="sidebar-section-title">目录</span>
+      <span class="sidebar-section-count" id="toc-count"></span>
+    </div>
+    <nav class="sidebar-list" id="toc-list" aria-label="目录导航"></nav>
+  </div>
+
+  <!-- 书签 -->
+  <div class="sidebar-section" id="bookmarks-section" style="display:none;">
+    <div class="sidebar-section-header">
+      <span class="sidebar-section-title">书签</span>
+    </div>
+    <div class="sidebar-list" id="bookmarks-list"></div>
+  </div>
+</aside>
+
+<style>
+  .sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar-upload {
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .upload-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-6) var(--space-3);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-align: center;
+    transition: all 0.15s ease;
+  }
+
+  .upload-label:hover,
+  .upload-label.drag-over {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    background: var(--bg-card);
+  }
+
+  .upload-icon {
+    color: var(--text-muted);
+  }
+
+  .upload-hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .sidebar-section {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-section-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: lowercase;
+  }
+
+  .sidebar-section-count {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .sidebar-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: var(--space-1) 0;
+  }
+
+  .sidebar-list a,
+  .sidebar-list button {
+    display: block;
+    width: 100%;
+    padding: var(--space-1) var(--space-4);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sidebar-list a:hover,
+  .sidebar-list button:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+  }
+
+  .sidebar-list a.active,
+  .sidebar-list button.active {
+    color: var(--accent-blue);
+    border-left: 2px solid var(--accent-blue);
+    background: var(--bg-card);
+  }
+
+  .toc-depth-1 { padding-left: calc(var(--space-4) + var(--space-4)) !important; }
+  .toc-depth-2 { padding-left: calc(var(--space-4) + var(--space-8)) !important; }
+  .toc-depth-3 { padding-left: calc(var(--space-4) + var(--space-8) + var(--space-4)) !important; }
+
+  .sidebar-list .bookmark-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .bookmark-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bookmark-delete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .bookmark-delete:hover {
+    color: var(--accent-red);
+    background: var(--bg-card);
+  }
+
+  .bookshelf-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .bookshelf-item:hover {
+    background: var(--bg-card);
+  }
+
+  .bookshelf-cover {
+    width: 36px;
+    height: 48px;
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .bookshelf-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .bookshelf-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bookshelf-title {
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bookshelf-author {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+</style>

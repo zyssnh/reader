@@ -1,0 +1,416 @@
+---
+/**
+ * Reader — 极客书房
+ * 主页面：三栏布局组装所有组件
+ */
+import Topbar from '../components/Topbar.astro';
+import Sidebar from '../components/Sidebar.astro';
+import Reader from '../components/Reader.astro';
+import SettingsPanel from '../components/SettingsPanel.astro';
+import '../styles/tokens.css';
+---
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#161b22" />
+  <meta name="description" content="极客风格电子书阅读器 — 支持 EPUB / TXT，离线可用" />
+
+  <!-- PWA / iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Reader" />
+  <link rel="apple-touch-icon" href="/reader/icons/apple-touch-icon.png" />
+  <link rel="manifest" href="/reader/manifest.json" />
+
+  <title>Reader — 极客书房</title>
+</head>
+<body>
+  <div class="app-layout" id="app-layout">
+    <Topbar />
+    <div class="app-body">
+      <Sidebar />
+      <Reader />
+      <SettingsPanel />
+    </div>
+  </div>
+
+  <!-- Service Worker 注册 -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/reader/sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
+
+<style is:global>
+  /* ── App 布局 ── */
+  .app-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── 全局阅读内容样式 ── */
+  html.reader-indent .reader-container p {
+    text-indent: 2em;
+  }
+
+  html.reader-hyphenation .reader-container p {
+    hyphens: auto;
+    -webkit-hyphens: auto;
+  }
+
+  html.reader-vertical .reader-container {
+    writing-mode: vertical-rl;
+  }
+
+  /* ── 响应式：小屏隐藏侧栏 ── */
+  @media (max-width: 768px) {
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 44px;
+      bottom: 0;
+      z-index: 100;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    .settings-panel {
+      position: fixed;
+      right: 0;
+      top: 44px;
+      bottom: 0;
+      z-index: 100;
+      transform: translateX(100%);
+      transition: transform 0.2s ease;
+    }
+
+    .settings-panel.open {
+      transform: translateX(0);
+    }
+  }
+</style>
+
+<script>
+  import {
+    loadBook,
+    goToChapter,
+    nextChapter,
+    prevChapter,
+    on,
+    getReaderState,
+    getCurrentBookmarks,
+    removeBookmark,
+    showToast,
+    initReaderCore,
+    restoreBook,
+  } from '../scripts/reader-core';
+  import { loadSettings, getSettings } from '../scripts/settings';
+  import { getAllBooks, getBook, deleteBook, type BookRecord } from '../scripts/storage';
+  import type { BookMeta, TocItem } from '../scripts/epub-loader';
+  import type { TxtMeta } from '../scripts/txt-loader';
+
+  // ── DOM 引用 ──
+  const sidebar = document.getElementById('sidebar') as HTMLElement;
+  const settingsPanel = document.getElementById('settings-panel') as HTMLElement;
+  const readerContainer = document.getElementById('reader-container') as HTMLElement;
+  const readerEmpty = document.getElementById('reader-empty') as HTMLElement;
+  const readerHeader = document.getElementById('reader-header') as HTMLElement;
+  const chapterTitle = document.getElementById('reader-chapter-title') as HTMLElement;
+  const topbarCenter = document.getElementById('topbar-center') as HTMLElement;
+  const topbarBookTitle = document.getElementById('topbar-book-title') as HTMLElement;
+  const topbarProgressBar = document.getElementById('topbar-progress-bar') as HTMLElement;
+  const topbarProgressText = document.getElementById('topbar-progress-text') as HTMLElement;
+  const tocSection = document.getElementById('toc-section') as HTMLElement;
+  const tocList = document.getElementById('toc-list') as HTMLElement;
+  const tocCount = document.getElementById('toc-count') as HTMLElement;
+  const bookmarksSection = document.getElementById('bookmarks-section') as HTMLElement;
+  const bookmarksList = document.getElementById('bookmarks-list') as HTMLElement;
+  const uploadArea = document.getElementById('sidebar-upload') as HTMLElement;
+  const fileInput = document.getElementById('file-input') as HTMLInputElement;
+  const bookshelfSection = document.getElementById('bookshelf-section') as HTMLElement;
+  const bookshelfList = document.getElementById('bookshelf-list') as HTMLElement;
+
+  // 初始化
+  await loadSettings();
+
+  // ── 面板切换 ──
+  document.getElementById('btn-sidebar-toggle')?.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    // 手机端关闭设置面板
+    if (settingsPanel.classList.contains('open')) settingsPanel.classList.remove('open');
+  });
+
+  document.getElementById('btn-settings-toggle')?.addEventListener('click', () => {
+    const isVisible = settingsPanel.style.display !== 'none';
+    if (isVisible) {
+      settingsPanel.style.display = 'none';
+      settingsPanel.classList.remove('open');
+    } else {
+      settingsPanel.style.display = 'flex';
+      settingsPanel.classList.add('open');
+    }
+  });
+
+  document.getElementById('btn-settings-close')?.addEventListener('click', () => {
+    settingsPanel.style.display = 'none';
+    settingsPanel.classList.remove('open');
+  });
+
+  // ── 文件上传 ──
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (file) await loadBook(file);
+    fileInput.value = '';
+  });
+
+  uploadArea.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).tagName !== 'INPUT') {
+      fileInput.click();
+    }
+  });
+
+  // 拖拽上传
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.querySelector('.upload-label')?.classList.add('drag-over');
+  });
+
+  document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.target === document.body) {
+      uploadArea.querySelector('.upload-label')?.classList.remove('drag-over');
+    }
+  });
+
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.querySelector('.upload-label')?.classList.remove('drag-over');
+
+    const file = e.dataTransfer?.files?.[0];
+    if (file) await loadBook(file);
+  });
+
+  // ── 书籍加载事件 ──
+  on('book-loaded', (meta: unknown) => {
+    const m = meta as BookMeta | TxtMeta;
+    readerEmpty.style.display = 'none';
+    readerHeader.style.display = 'block';
+    topbarCenter.style.display = 'flex';
+
+    // 更新顶部栏
+    topbarBookTitle.textContent = m.title;
+
+    // 构建目录
+    buildTOC(m);
+
+    // 显示书签区
+    bookmarksSection.style.display = 'flex';
+    refreshBookmarks();
+
+    // 高亮上传区状态
+    uploadArea.style.opacity = '0.5';
+  });
+
+  // ── 构建目录 ──
+  function buildTOC(m: BookMeta | TxtMeta): void {
+    tocSection.style.display = 'flex';
+    tocList.innerHTML = '';
+
+    if ('toc' in m) {
+      // EPUB
+      const epubMeta = m as BookMeta;
+      tocCount.textContent = String(epubMeta.toc.length);
+
+      function renderItems(items: TocItem[]): void {
+        for (const item of items) {
+          const link = document.createElement('a');
+          link.href = '#';
+          link.textContent = item.label;
+          link.className = `toc-depth-${Math.min(item.depth, 3)}`;
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const hrefs = getReaderState().chapterHrefs;
+            const idx = hrefs.indexOf(item.href);
+            if (idx >= 0) goToChapter(idx, readerContainer);
+          });
+          tocList.appendChild(link);
+
+          if (item.children) renderItems(item.children);
+        }
+      }
+      renderItems(epubMeta.toc);
+    } else {
+      // TXT
+      const txtMeta = m as TxtMeta;
+      tocCount.textContent = String(txtMeta.chapters.length);
+
+      for (let i = 0; i < txtMeta.chapters.length; i++) {
+        const ch = txtMeta.chapters[i];
+        const link = document.createElement('a');
+        link.href = '#';
+        link.textContent = ch.title;
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          goToChapter(i, readerContainer);
+        });
+        tocList.appendChild(link);
+      }
+    }
+  }
+
+  // ── 章节切换 ──
+  on('chapter-changed', (index: unknown) => {
+    const state = getReaderState();
+    const idx = index as number;
+    const meta = state.meta as BookMeta | TxtMeta | null;
+
+    // 更新章节标题
+    if (meta) {
+      if ('chapters' in meta) {
+        const ch = meta.chapters[idx];
+        if (ch) chapterTitle.textContent = ch.title;
+      } else if ('toc' in meta) {
+        const href = state.currentChapterHref;
+        function findLabel(items: TocItem[]): string | null {
+          for (const item of items) {
+            if (item.href === href) return item.label;
+            if (item.children) {
+              const found = findLabel(item.children);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
+        const label = findLabel(meta.toc);
+        if (label) chapterTitle.textContent = label;
+      }
+    }
+
+    // 更新进度条
+    const total = state.chapterHrefs.length;
+    const pct = total > 0 ? Math.round(((idx + 1) / total) * 100) : 0;
+    topbarProgressBar.style.width = `${pct}%`;
+    topbarProgressText.textContent = `${idx + 1}/${total} (${pct}%)`;
+
+    // 高亮目录当前项
+    tocList.querySelectorAll('a').forEach((a, i) => {
+      a.classList.toggle('active', i === idx);
+    });
+  });
+
+  // ── 书签刷新 ──
+  async function refreshBookmarks(): Promise<void> {
+    const bookmarks = await getCurrentBookmarks();
+    bookmarksList.innerHTML = '';
+
+    if (bookmarks.length === 0) {
+      const empty = document.createElement('span');
+      empty.style.cssText = 'padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--text-muted);';
+      empty.textContent = '暂无书签';
+      bookmarksList.appendChild(empty);
+      return;
+    }
+
+    for (const bm of bookmarks) {
+      const div = document.createElement('div');
+      div.className = 'bookmark-item';
+
+      const textSpan = document.createElement('span');
+      textSpan.className = 'bookmark-text';
+      textSpan.textContent = bm.text;
+      textSpan.addEventListener('click', async () => {
+        const hrefs = getReaderState().chapterHrefs;
+        const idx = hrefs.indexOf(bm.chapterHref);
+        if (idx >= 0) {
+          await goToChapter(idx, readerContainer);
+          readerContainer.scrollTop = bm.scrollY;
+        }
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'bookmark-delete';
+      delBtn.innerHTML = '×';
+      delBtn.title = '删除书签';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (bm.id !== undefined) {
+          await removeBookmark(bm.id);
+          refreshBookmarks();
+        }
+      });
+
+      div.appendChild(textSpan);
+      div.appendChild(delBtn);
+      bookmarksList.appendChild(div);
+    }
+  }
+
+  on('bookmarks-updated', () => {
+    refreshBookmarks();
+  });
+
+  // ── 书架加载 ──
+  async function loadBookshelf(): Promise<void> {
+    const books = await getAllBooks();
+    bookshelfList.innerHTML = '';
+
+    if (books.length === 0) return;
+
+    for (const book of books.reverse()) {
+      const div = document.createElement('div');
+      div.className = 'bookshelf-item';
+
+      const cover = document.createElement('div');
+      cover.className = 'bookshelf-cover';
+      if (book.cover) {
+        cover.innerHTML = `<img src="${escapeHtml(book.cover)}" alt="封面" />`;
+      } else {
+        cover.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+      }
+
+      const info = document.createElement('div');
+      info.className = 'bookshelf-info';
+      info.innerHTML = `<div class="bookshelf-title">${escapeHtml(book.title)}</div><div class="bookshelf-author">${escapeHtml(book.author)} · ${book.format.toUpperCase()}</div>`;
+
+      div.appendChild(cover);
+      div.appendChild(info);
+
+      div.addEventListener('click', async () => {
+        if (book.id !== undefined) {
+          await restoreBook(book.id, book.fileData, book.format);
+        }
+      });
+
+      bookshelfList.appendChild(div);
+    }
+  }
+
+  function escapeHtml(text: string): string {
+    const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return text.replace(/[&<>"']/g, ch => map[ch] ?? ch);
+  }
+
+  loadBookshelf();
+  on('book-loaded', () => loadBookshelf());
+</script>
