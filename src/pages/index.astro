@@ -13,7 +13,7 @@ import '../styles/tokens.css';
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#161b22" />
+  <meta name="theme-color" content="#161b22" id="meta-theme-color" />
   <meta name="description" content="极客风格电子书阅读器 — 支持 EPUB / TXT，离线可用" />
 
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -36,6 +36,14 @@ import '../styles/tokens.css';
         <span class="topbar-brand">读</span>
       </a>
       <div class="topbar-actions">
+        <button class="theme-toggle" id="theme-toggle" aria-label="切换主题" title="切换亮暗模式">
+          <svg class="theme-icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
         <ImportBtn />
       </div>
     </header>
@@ -125,6 +133,32 @@ import '../styles/tokens.css';
     align-items: center;
     gap: var(--space-2);
   }
+
+  /* ── 主题切换按钮 ── */
+  .theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+  }
+
+  .theme-toggle .theme-icon-light { display: none; }
+  .theme-toggle .theme-icon-dark  { display: block; }
+
+  [data-theme="light"] .theme-toggle .theme-icon-light { display: block; }
+  [data-theme="light"] .theme-toggle .theme-icon-dark  { display: none; }
 
   /* ── 拖拽遮罩 ── */
   .drop-overlay {
@@ -598,6 +632,49 @@ import '../styles/tokens.css';
       console.error('importFile error:', err);
     }
   }
+
+  // ── 主题切换 ──
+  const THEME_KEY = 'reader-theme';
+  const themeToggle = document.getElementById('theme-toggle')!;
+  const metaThemeColor = document.getElementById('meta-theme-color') as HTMLMetaElement;
+  const html = document.documentElement;
+
+  const themeColors: Record<string, string> = {
+    dark: '#161b22',
+    light: '#ffffff',
+  };
+
+  /** 应用主题 */
+  function setTheme(theme: 'dark' | 'light'): void {
+    html.setAttribute('data-theme', theme);
+    metaThemeColor.setAttribute('content', themeColors[theme] ?? themeColors.dark);
+    localStorage.setItem(THEME_KEY, theme);
+  }
+
+  /** 切换主题 */
+  function toggleTheme(): void {
+    const current = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    setTheme(current);
+  }
+
+  // 初始化：从 localStorage 恢复
+  const savedTheme = localStorage.getItem(THEME_KEY) as 'dark' | 'light' | null;
+  if (savedTheme === 'dark' || savedTheme === 'light') {
+    setTheme(savedTheme);
+  } else {
+    // 首次访问：跟随系统偏好
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setTheme(prefersDark ? 'dark' : 'light');
+  }
+
+  // 监听系统主题变化（仅在没有手动设置时）
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem(THEME_KEY)) {
+      setTheme(e.matches ? 'dark' : 'light');
+    }
+  });
+
+  themeToggle.addEventListener('click', toggleTheme);
 
   // 初始渲染
   renderShelf();
