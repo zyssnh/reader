@@ -28,6 +28,8 @@
     /* 关键：防止浏览器自动多列 */
     column-count: 1 !important;
     columns: unset !important;
+    /* 隔离书籍内容样式，防止泄露到 App 外壳 */
+    contain: layout style;
   }
 
   .read-content-empty {
