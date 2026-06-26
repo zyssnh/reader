@@ -1,56 +1,61 @@
 /**
  * EPUB 解析器
- * 使用 JSZip 直接解压，支持 EPUB 2/3，命名空间自适应，
- * 层级化 TOC（卷→章→节）。
+ * 使用 JSZip 直接解压，支持 EPUB 2/3。
+ *
+ * 核心修复：
+ * - 命名空间安全查询使用 Element.localName 过滤，
+ *   彻底替换有 bug 的 CSS toNsSelector()
+ * - NCX navLabel > text 提取不走 CSS，直接用 child search
+ * - TOC label 原样保留，永不自动生成
  */
 import JSZip from 'jszip';
 import type { TocEntry } from '../../types/index';
 
-/** 内部 TOC 树节点 */
-interface TocNode {
-  label: string;
-  href: string;             // 相对于 OPF 根的文件路径（已 resolve）
-  children: TocNode[];
-  depth: number;
-}
-
-export interface EpubChapter {
-  id: string;               // manifest idref
-  href: string;             // 文件路径（用于 TOC 匹配）
-  title: string;
-  content: string;          // HTML
-  index: number;            // spine 顺序
-  depth: number;            // TOC 层级
-}
-
-export interface EpubData {
-  title: string;
-  author: string;
-  cover?: string;
-  chapters: EpubChapter[];  // spine 顺序（内容渲染）
-  toc: TocEntry[];          // TOC 层级结构（面板显示）
-}
-
 // ═══════════════════════════════════════════════════
-// 命名空间安全查询
+// XML 命名空间安全查询
 // ═══════════════════════════════════════════════════
 
-/** 将裸标签选择器转为 local-name() 形式 */
-function toNsSelector(selector: string): string {
-  return selector.replace(/([a-zA-Z_][\w-]*)/g, (m, tag) => {
-    if (/^\[.*\]$/.test(m) || m === '*') return m;
-    return `*[local-name()='${tag}']`;
-  });
+/** 按 localName 取第一个后代（深度优先） */
+function childByLocalName(parent: Element, name: string): Element | null {
+  for (const c of parent.children) {
+    if (c.localName === name) return c;
+  }
+  return null;
 }
 
-function nsQuery(parent: Document | Element, selector: string): Element | null {
-  return parent.querySelector(selector) ?? parent.querySelector(toNsSelector(selector));
+/** 按 localName 取所有直接子元素 */
+function childrenByLocalName(parent: Element, name: string): Element[] {
+  return Array.from(parent.children).filter(c => c.localName === name);
 }
 
-function nsQueryAll(parent: Document | Element, selector: string): Element[] {
-  const direct = Array.from(parent.querySelectorAll(selector));
-  if (direct.length > 0) return direct;
-  return Array.from(parent.querySelectorAll(toNsSelector(selector)));
+/** 深层搜索：按 localName 取所有后代 */
+function allByLocalName(parent: Element, name: string): Element[] {
+  return Array.from(parent.getElementsByTagName('*')).filter(e => e.localName === name);
+}
+
+/** 按路径取第一个匹配: "parent > child" 或 "parent > child > grandchild" */
+function queryPath(parent: Element, path: string): Element | null {
+  const parts = path.split(/\s*>\s*/);
+  let current: Element | null = parent;
+  for (const part of parts) {
+    if (!current) return null;
+    current = childByLocalName(current, part);
+  }
+  return current;
+}
+
+/** 按路径取所有匹配（只支持 "parent > child" 两级） */
+function queryPathAll(parent: Element, path: string): Element[] {
+  const parts = path.split(/\s*>\s*/);
+  if (parts.length === 1) {
+    return childrenByLocalName(parent, parts[0]);
+  }
+  const [first, second] = parts;
+  const results: Element[] = [];
+  for (const child of childrenByLocalName(parent, first)) {
+    results.push(...childrenByLocalName(child, second));
+  }
+  return results;
 }
 
 // ═══════════════════════════════════════════════════
@@ -64,27 +69,27 @@ function parseSectionHtml(raw: string): Document {
   return parser.parseFromString(raw, 'text/html');
 }
 
+/** 从 text/html 模式的 doc 中取 <a> 标签（text/html 下无命名空间，可安全用 CSS） */
+function queryA_all(parent: Element): Element[] {
+  return Array.from(parent.querySelectorAll('a'));
+}
+
 // ═══════════════════════════════════════════════════
 // 路径工具
 // ═══════════════════════════════════════════════════
 
-/** 规范化路径：去掉 ./ ../ fragment，统一斜杠 */
 function normalizePath(base: string, rel: string): string {
-  // 去掉 fragment
   const cleanRel = rel.split('#')[0];
   if (!cleanRel) return base;
 
   let resolved: string;
   if (cleanRel.startsWith('/')) {
-    // 绝对路径（相对于 EPUB 根）：截取第一段目录
     resolved = cleanRel.replace(/^\/+/, '');
   } else {
-    // 相对路径：拼接在 base 目录下
     const baseDir = base.includes('/') ? base.split('/').slice(0, -1).join('/') + '/' : '';
     resolved = baseDir + cleanRel;
   }
 
-  // 处理 ../
   const parts = resolved.split('/');
   const stack: string[] = [];
   for (const p of parts) {
@@ -95,6 +100,40 @@ function normalizePath(base: string, rel: string): string {
 }
 
 // ═══════════════════════════════════════════════════
+// 内部类型
+// ═══════════════════════════════════════════════════
+
+interface TocNode {
+  label: string;
+  href: string;
+  children: TocNode[];
+  depth: number;
+}
+
+export interface EpubChapter {
+  id: string;
+  href: string;
+  title: string;
+  content: string;
+  index: number;
+  depth: number;
+}
+
+export interface EpubData {
+  title: string;
+  author: string;
+  cover?: string;
+  chapters: EpubChapter[];
+  toc: TocEntry[];
+}
+
+interface TocSpineMapping {
+  spineIndex: number;
+  tocTitle: string;
+  depth: number;
+}
+
+// ═══════════════════════════════════════════════════
 // 主解析入口
 // ═══════════════════════════════════════════════════
 
@@ -102,69 +141,65 @@ export async function parseEpub(file: File): Promise<EpubData> {
   const arrayBuffer = await file.arrayBuffer();
   const zip = await JSZip.loadAsync(arrayBuffer);
 
-  // 1. container.xml → OPF 路径
+  // 1. container.xml
   const containerXml = await zip.file('META-INF/container.xml')?.async('string');
   if (!containerXml) throw new Error('无效的 EPUB：缺少 container.xml');
 
   const opfMatch = containerXml.match(/full-path="([^"]+\.opf)"/)
     ?? containerXml.match(/full-path=['"]([^'"]+\.opf)['"]/);
-  if (!opfMatch) throw new Error('无法找到 OPF 文件路径');
+  if (!opfMatch) throw new Error('找不到 OPF 路径');
   const opfPath = opfMatch[1];
   const opfDir = opfPath.includes('/') ? opfPath.split('/').slice(0, -1).join('/') + '/' : '';
 
   // 2. 解析 OPF
   const opfXml = await zip.file(opfPath)?.async('string');
-  if (!opfXml) throw new Error('无法读取 OPF 文件');
+  if (!opfXml) throw new Error('无法读取 OPF');
   const opf = new DOMParser().parseFromString(opfXml, 'application/xml');
-  if (opf.querySelector('parsererror')) throw new Error('OPF XML 解析失败');
+  if (opf.querySelector('parsererror')) throw new Error('OPF XML 无效');
 
-  const title = nsQuery(opf, 'metadata > title')?.textContent?.trim()
+  // 元数据
+  const title = queryPath(opf, 'metadata > title')?.textContent?.trim()
     || file.name.replace(/\.epub$/i, '');
-  const author = nsQuery(opf, 'metadata > creator')?.textContent?.trim() || '未知作者';
+  const author = queryPath(opf, 'metadata > creator')?.textContent?.trim() || '未知作者';
 
   // 3. 封面
   const cover = await extractCover(zip, opf, opfDir);
 
-  // 4. manifest: id → href（相对于 OPF 目录的完整路径）
-  const manifestItems = nsQueryAll(opf, 'manifest > item');
+  // 4. manifest: id → 完整路径
+  const manifestItems = allByLocalName(queryPath(opf, 'manifest')!, 'item');
   const idToHref = new Map<string, string>();
-  const idToMediaType = new Map<string, string>();
   for (const item of manifestItems) {
     const id = item.getAttribute('id');
     const href = item.getAttribute('href');
-    if (id && href) {
-      idToHref.set(id, normalizePath(opfPath, href));
-      idToMediaType.set(id, item.getAttribute('media-type') ?? '');
-    }
+    if (id && href) idToHref.set(id, normalizePath(opfPath, href));
   }
 
   // 5. spine 顺序
-  const spineRefs = nsQueryAll(opf, 'spine > itemref');
+  const spineEl = queryPath(opf, 'spine');
+  const spineRefs = spineEl ? childrenByLocalName(spineEl, 'itemref') : [];
   const spineIds = spineRefs.map(r => r.getAttribute('idref')).filter(Boolean) as string[];
 
-  // 6. 解析层级化 TOC 树
-  const tocTree = await parseTocTree(zip, opf, opfPath);
+  // 6. 解析层级 TOC 树
+  const tocTree = await parseTocTree(zip, opf, opfPath, idToHref, spineIds);
 
-  // 7. 构建 href→spineIndex 映射（用于 TOC→章节匹配）
+  // 7. href → spineIndex 映射
   const hrefToSpineIndex = new Map<string, number>();
   for (let i = 0; i < spineIds.length; i++) {
-    const filePath = idToHref.get(spineIds[i]);
-    if (filePath) hrefToSpineIndex.set(filePath, i);
+    const fp = idToHref.get(spineIds[i]);
+    if (fp) hrefToSpineIndex.set(fp, i);
   }
 
-  // 8. 将 TOC 树解析为章节顺序，flat map 到 spine index
+  // 8. TOC → spine 映射
   const tocToSpine = resolveTocTree(tocTree, hrefToSpineIndex);
-
-  // 9. 如果 TOC 提供了排序，按 TOC 顺序重排 spine 中的章节；
-  //    同时标注 depth
   const chapterOrder = buildChapterOrder(spineIds, tocToSpine);
 
-  // 10. 读取章节内容
+  // 9. 读取章节内容
   const chapters: EpubChapter[] = [];
   for (const { spineIndex, tocTitle, depth } of chapterOrder) {
     const idref = spineIds[spineIndex];
     const filePath = idToHref.get(idref) ?? '';
-    const title = tocTitle || idref || `第 ${spineIndex + 1} 章`;
+    // 优先 TOC label，其次 spine idref，最后才是自动编号
+    const chTitle = tocTitle || idref || `第 ${spineIndex + 1} 章`;
     let content = '';
 
     try {
@@ -174,7 +209,6 @@ export async function parseEpub(file: File): Promise<EpubData> {
         doc.querySelectorAll('script, style, head').forEach(el => el.remove());
         const bodyContent = doc.body?.innerHTML?.trim();
         content = bodyContent || raw;
-
         if (!bodyContent) {
           const text = doc.body?.textContent?.trim() || raw.replace(/<[^>]+>/g, '').trim();
           if (text) {
@@ -187,12 +221,12 @@ export async function parseEpub(file: File): Promise<EpubData> {
       console.warn(`章节 ${spineIndex} (${idref}) 解析失败:`, err);
     }
 
-    chapters.push({ id: idref, href: filePath, title, content, index: spineIndex, depth });
+    chapters.push({ id: idref, href: filePath, title: chTitle, content, index: spineIndex, depth });
   }
 
-  // 11. 如果 spine 为空，fallback
+  // 10. spine 为空 → fallback
   if (chapters.length === 0) {
-    console.warn('spine 为空，遍历 ZIP 中所有 XHTML');
+    console.warn('spine 为空，遍历 ZIP');
     const fb = await fallbackExtract(zip);
     if (fb.length > 0) {
       const fbChapters = fb.map((c, i) => ({ ...c, index: i, depth: 0 }));
@@ -201,27 +235,29 @@ export async function parseEpub(file: File): Promise<EpubData> {
     }
   }
 
-  // 12. 构建 UI TOC 结构（层级化，供 TocPanel 渲染）
+  // 11. 构建 UI TOC
   const displayToc = buildDisplayToc(tocTree, hrefToSpineIndex, chapterOrder);
 
   return { title, author, cover, chapters, toc: displayToc };
 }
 
 // ═══════════════════════════════════════════════════
-// TOC 树解析（层级化）
+// TOC 树解析
 // ═══════════════════════════════════════════════════
 
 async function parseTocTree(
   zip: JSZip,
   opf: Document,
   opfPath: string,
+  idToHref: Map<string, string>,
+  spineIds: string[],
 ): Promise<TocNode[]> {
   const opfDir = opfPath.includes('/') ? opfPath.split('/').slice(0, -1).join('/') + '/' : '';
-  const allItems = nsQueryAll(opf, 'manifest > item');
+  const navMap = allByLocalName(opf, 'manifest').flatMap(m => childrenByLocalName(m, 'item'));
 
   try {
-    // EPUB 3: NAV document
-    const navItem = allItems.find(el => (el.getAttribute('properties') ?? '').includes('nav'));
+    // EPUB 3: NAV document (properties 含 "nav")
+    const navItem = navMap.find(el => (el.getAttribute('properties') ?? '').includes('nav'));
     if (navItem) {
       const navHref = navItem.getAttribute('href');
       if (navHref) {
@@ -229,7 +265,7 @@ async function parseTocTree(
         const navXml = await zip.file(navPath)?.async('string');
         if (navXml) {
           const navDoc = parseSectionHtml(navXml);
-          // 找 <nav epub:type="toc"> 内的第一个 <ol>
+          // text/html 模式下可以用 CSS 安全 select
           const tocNav = navDoc.querySelector('nav[epub\\:type="toc"], nav');
           const topOl = tocNav?.querySelector('ol');
           if (topOl) {
@@ -241,20 +277,24 @@ async function parseTocTree(
     }
 
     // EPUB 2: NCX
-    const spineEl = nsQuery(opf, 'spine');
+    const spineEl = queryPath(opf, 'spine');
     const ncxId = spineEl?.getAttribute('toc');
     if (ncxId) {
-      const ncxItem = allItems.find(el => el.getAttribute('id') === ncxId);
+      const ncxItem = navMap.find(el => el.getAttribute('id') === ncxId);
       const ncxHref = ncxItem?.getAttribute('href');
       if (ncxHref) {
         const ncxPath = normalizePath(opfPath, ncxHref);
         const ncxXml = await zip.file(ncxPath)?.async('string');
         if (ncxXml) {
           const ncxDoc = new DOMParser().parseFromString(ncxXml, 'application/xml');
-          const navMap = nsQuery(ncxDoc, 'navMap');
-          if (navMap) {
-            const tree = parseNcxNavPoints(navMap, opfDir, 0);
-            if (tree.length > 0) return tree;
+          if (!ncxDoc.querySelector('parsererror')) {
+            const navMapEl = queryPath(ncxDoc, 'navMap');
+            if (navMapEl) {
+              // 用 ncxPath 的目录作为 base（NCX 中的 src 相对路径基准）
+              const ncxDir = ncxPath.includes('/') ? ncxPath.split('/').slice(0, -1).join('/') + '/' : '';
+              const tree = parseNcxNavPoints(navMapEl, ncxDir, 0);
+              if (tree.length > 0) return tree;
+            }
           }
         }
       }
@@ -266,9 +306,10 @@ async function parseTocTree(
   return [];
 }
 
-/** 递归解析 EPUB 3 NAV 的 <ol> 结构 */
-function parseNavOl(ol: Element, opfDir: string, depth: number): TocNode[] {
+/** EPUB 3 NAV: 递归 <ol> → TocNode[] */
+function parseNavOl(ol: Element, baseDir: string, depth: number): TocNode[] {
   const nodes: TocNode[] = [];
+  // text/html 模式下 <li> 无命名空间，CSS 安全
   const lis = ol.querySelectorAll(':scope > li');
 
   for (const li of lis) {
@@ -279,47 +320,44 @@ function parseNavOl(ol: Element, opfDir: string, depth: number): TocNode[] {
     const label = a.textContent?.trim() ?? '';
     if (!label) continue;
 
-    const fullHref = normalizePath(opfDir, href);
-
+    const fullHref = normalizePath(baseDir, href);
     const childOl = li.querySelector(':scope > ol');
-    const children = childOl ? parseNavOl(childOl, opfDir, depth + 1) : [];
+    const children = childOl ? parseNavOl(childOl, baseDir, depth + 1) : [];
 
     nodes.push({ label, href: fullHref, children, depth });
   }
   return nodes;
 }
 
-/** 递归解析 EPUB 2 NCX 的 <navPoint> 结构 */
-function parseNcxNavPoints(parent: Element, opfDir: string, depth: number): TocNode[] {
+/** EPUB 2 NCX: 递归 <navPoint> → TocNode[] */
+function parseNcxNavPoints(parent: Element, ncxDir: string, depth: number): TocNode[] {
   const nodes: TocNode[] = [];
-  const navPoints = parent.querySelectorAll(':scope > navPoint, :scope > *[local-name()="navPoint"]');
+  const navPoints = childrenByLocalName(parent, 'navPoint');
 
   for (const np of navPoints) {
-    const contentEl = np.querySelector('content, *[local-name()="content"]');
+    // content: <content src="…"/>
+    const contentEl = childByLocalName(np, 'content');
     const src = contentEl?.getAttribute('src') ?? '';
-    const textEl = np.querySelector('navLabel > text, text, *[local-name()="text"]');
+    if (!src) continue;
+
+    // label: <navLabel><text>第一章 小小灵娥</text></navLabel>
+    const navLabel = childByLocalName(np, 'navLabel');
+    const textEl = navLabel ? childByLocalName(navLabel, 'text') : null;
     const label = textEl?.textContent?.trim() ?? '';
-    if (!label || !src) continue;
+    if (!label) continue;
 
-    const fullHref = normalizePath(opfDir, src);
+    const fullHref = normalizePath(ncxDir, src);
+    const children = parseNcxNavPoints(np, ncxDir, depth + 1);
 
-    const children = parseNcxNavPoints(np, opfDir, depth + 1);
     nodes.push({ label, href: fullHref, children, depth });
   }
   return nodes;
 }
 
 // ═══════════════════════════════════════════════════
-// TOC → Spine 解析
+// TOC → Spine 映射
 // ═══════════════════════════════════════════════════
 
-interface TocSpineMapping {
-  spineIndex: number;
-  tocTitle: string;
-  depth: number;
-}
-
-/** 将 TOC 树展平为 spine-index 映射列表 */
 function resolveTocTree(
   tree: TocNode[],
   hrefToSpineIndex: Map<string, number>,
@@ -330,11 +368,9 @@ function resolveTocTree(
   function walk(nodes: TocNode[]): void {
     for (const node of nodes) {
       const si = hrefToSpineIndex.get(node.href);
-      if (si !== undefined) {
-        if (!seen.has(si)) {
-          result.push({ spineIndex: si, tocTitle: node.label, depth: node.depth });
-          seen.add(si);
-        }
+      if (si !== undefined && !seen.has(si)) {
+        result.push({ spineIndex: si, tocTitle: node.label, depth: node.depth });
+        seen.add(si);
       }
       if (node.children.length > 0) walk(node.children);
     }
@@ -344,7 +380,6 @@ function resolveTocTree(
   return result;
 }
 
-/** 按 TOC 顺序排列章节（TOC 覆盖的排前面，未被覆盖的追加末尾） */
 function buildChapterOrder(
   spineIds: string[],
   tocMapping: TocSpineMapping[],
@@ -352,37 +387,31 @@ function buildChapterOrder(
   const covered = new Set(tocMapping.map(m => m.spineIndex));
   const result = [...tocMapping];
 
-  // 追加 TOC 未覆盖的 spine 项
   for (let i = 0; i < spineIds.length; i++) {
     if (!covered.has(i)) {
-      result.push({ spineIndex: i, tocTitle: '', depth: 0 });
+      // 未被 TOC 覆盖的章节也用 spine idref 作为标题（而非自动编号）
+      const idref = spineIds[i];
+      result.push({ spineIndex: i, tocTitle: idref, depth: 0 });
     }
   }
 
   return result;
 }
 
-/** 构建 UI 显示的层级化 TOC */
 function buildDisplayToc(
   tree: TocNode[],
   hrefToSpineIndex: Map<string, number>,
   chapterOrder: TocSpineMapping[],
 ): TocEntry[] {
-  // 建立 spineIndex → chapterOrder 位置映射
   const spineToOrderPos = new Map<number, number>();
-  chapterOrder.forEach((m, pos) => {
-    spineToOrderPos.set(m.spineIndex, pos);
-  });
+  chapterOrder.forEach((m, pos) => spineToOrderPos.set(m.spineIndex, pos));
 
   function convert(nodes: TocNode[]): TocEntry[] {
     const entries: TocEntry[] = [];
     for (const node of nodes) {
       const si = hrefToSpineIndex.get(node.href);
       if (si === undefined) {
-        // TOC 节点无对应章节（如外部链接），跳过但保留子节点
-        if (node.children.length > 0) {
-          entries.push(...convert(node.children));
-        }
+        if (node.children.length > 0) entries.push(...convert(node.children));
         continue;
       }
 
@@ -407,7 +436,7 @@ function buildDisplayToc(
 
   const tocEntries = convert(tree);
 
-  // 如果 TOC 为空，用 chapterOrder 生成平铺目录
+  // TOC 为空：用 chapterOrder 构建平铺目录
   if (tocEntries.length === 0) {
     return chapterOrder.map(m => ({
       chapterIndex: m.spineIndex,
@@ -425,16 +454,16 @@ function buildDisplayToc(
 
 async function extractCover(zip: JSZip, opf: Document, opfDir: string): Promise<string | undefined> {
   try {
-    const coverMetaEl = opf.querySelector('meta[name="cover"]')
-      ?? opf.querySelector('*[local-name()="meta"][name="cover"]');
-    const coverId = coverMetaEl?.getAttribute('content');
+    const allMeta = allByLocalName(opf, 'meta');
+    const coverMeta = allMeta.find(el => el.getAttribute('name') === 'cover');
+    const coverId = coverMeta?.getAttribute('content');
 
-    const allItems = nsQueryAll(opf, 'manifest > item');
+    const manifestEl = queryPath(opf, 'manifest');
+    const allItems = manifestEl ? childrenByLocalName(manifestEl, 'item') : [];
     let coverItem: Element | null = null;
+
     if (coverId) {
-      coverItem = allItems.find(el =>
-        el.getAttribute('id') === coverId
-      ) ?? null;
+      coverItem = allItems.find(el => el.getAttribute('id') === coverId) ?? null;
     }
     if (!coverItem) {
       coverItem = allItems.find(el =>
@@ -454,7 +483,7 @@ async function extractCover(zip: JSZip, opf: Document, opfDir: string): Promise<
 }
 
 // ═══════════════════════════════════════════════════
-// Fallback：遍历 ZIP 中所有 XHTML
+// Fallback
 // ═══════════════════════════════════════════════════
 
 async function fallbackExtract(zip: JSZip): Promise<Array<{ id: string; href: string; title: string; content: string }>> {
