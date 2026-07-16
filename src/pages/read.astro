@@ -156,8 +156,6 @@ import '../styles/tokens.css';
   const tocPagination = document.getElementById('toc-pagination')!;
   const tocPageInfo = document.getElementById('toc-page-info')!;
   const tocEmpty = document.getElementById('toc-empty')!;
-  const tocRecent = document.getElementById('toc-recent')!;
-  const tocRecentList = document.getElementById('toc-recent-list')!;
   const ctxMenu = document.getElementById('toc-context-menu')!;
 
   // 浮动工具栏
@@ -181,15 +179,11 @@ import '../styles/tokens.css';
   let currentStyle: Omit<BookStyle, 'bookId'> = { ...DEFAULT_STYLE };
   let tocEntries: Array<{ chapterIndex: number; title: string; depth: number; children?: typeof tocEntries }> = [];
   let tocFlat: Array<{ chapterIndex: number; title: string; depth: number }> = [];
-  let favorites: Set<number> = new Set();
 
   // ── localStorage keys ──
   const LS = {
     scrollMode: `toc-scroll-mode:${bookId}`,
     pageSize: `toc-page-size:${bookId}`,
-    favorites: `toc-fav:${bookId}`,
-    collapsed: `toc-collapsed:${bookId}`,
-    recent: `toc-recent:${bookId}`,
     scrollTop: `toc-scroll:${bookId}`,
   };
 
@@ -209,22 +203,6 @@ import '../styles/tokens.css';
       toast.classList.remove('reader-toast--visible');
       setTimeout(() => toast.remove(), 300);
     }, 3000);
-  }
-
-  // ── Favorites ──
-  function loadFavorites(): void {
-    try { favorites = new Set(JSON.parse(localStorage.getItem(LS.favorites) || '[]')); } catch { favorites = new Set(); }
-  }
-  function saveFavorites(): void { localStorage.setItem(LS.favorites, JSON.stringify([...favorites])); }
-
-  // ── Recent reading history ──
-  function getRecentHistory(): number[] {
-    try { return JSON.parse(localStorage.getItem(LS.recent) || '[]'); } catch { return []; }
-  }
-  function pushRecentHistory(idx: number): void {
-    const list = getRecentHistory().filter(i => i !== idx);
-    list.unshift(idx);
-    localStorage.setItem(LS.recent, JSON.stringify(list.slice(0, 5)));
   }
 
   // ── 扁平化 TOC ──
@@ -276,7 +254,6 @@ import '../styles/tokens.css';
         const hasChildren = item.children && item.children.length > 0;
         const d = Math.min(item.depth, 2);
         const isActive = item.chapterIndex === activeIdx;
-        const isFav = favorites.has(item.chapterIndex);
 
         const labelMatch = !isFiltering || item.title.toLowerCase().includes(query);
         const childUl = hasChildren ? buildTree(item.children!, level + 1) : null;
@@ -323,16 +300,6 @@ import '../styles/tokens.css';
           row.appendChild(dot);
         }
 
-        // Favorite star
-        const favBtn = document.createElement('button');
-        favBtn.className = `toc-fav${isFav ? ' favorited' : ''}`;
-        favBtn.innerHTML = '⭐';
-        favBtn.setAttribute('aria-label', isFav ? '取消收藏' : '收藏');
-        favBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          toggleFavorite(item.chapterIndex, favBtn);
-        });
-        row.appendChild(favBtn);
 
         // Click → navigate
         row.addEventListener('click', () => {
@@ -397,7 +364,6 @@ import '../styles/tokens.css';
 
     for (const item of pageItems) {
       const isActive = item.chapterIndex === activeIdx;
-      const isFav = favorites.has(item.chapterIndex);
 
       const li = document.createElement('li');
       li.setAttribute('role', 'treeitem');
@@ -426,15 +392,6 @@ import '../styles/tokens.css';
         dot.className = 'toc-progress-dot';
         row.appendChild(dot);
       }
-
-      const favBtn = document.createElement('button');
-      favBtn.className = `toc-fav${isFav ? ' favorited' : ''}`;
-      favBtn.innerHTML = '⭐';
-      favBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleFavorite(item.chapterIndex, favBtn);
-      });
-      row.appendChild(favBtn);
 
       row.addEventListener('click', () => {
         goToChapter(item.chapterIndex);
@@ -482,19 +439,6 @@ import '../styles/tokens.css';
   }
 
   // ═══════════════════════════════════════════════════
-  // Favorites
-  // ═══════════════════════════════════════════════════
-
-  function toggleFavorite(chapterIndex: number, btn?: HTMLElement): void {
-    if (favorites.has(chapterIndex)) {
-      favorites.delete(chapterIndex);
-      btn?.classList.remove('favorited');
-    } else {
-      favorites.add(chapterIndex);
-      btn?.classList.add('favorited');
-    }
-    saveFavorites();
-  }
 
   // ═══════════════════════════════════════════════════
   // Context menu
@@ -527,12 +471,6 @@ import '../styles/tokens.css';
       case 'copy-title':
         navigator.clipboard.writeText(title);
         showToast('标题已复制', 'success');
-        break;
-      case 'favorite':
-        toggleFavorite(idx);
-        // 立即关闭上下文菜单并重新渲染
-        hideContextMenu();
-        renderToc(tocEntries, currentIndex);
         break;
       case 'bookmark':
         addBookmarkHere();
@@ -659,32 +597,6 @@ import '../styles/tokens.css';
   });
 
   // ═══════════════════════════════════════════════════
-  // Recent reading
-  // ═══════════════════════════════════════════════════
-
-  function updateRecentReading(): void {
-    const recent = getRecentHistory();
-    if (recent.length === 0) {
-      tocRecent.style.display = 'none';
-      return;
-    }
-    tocRecent.style.display = 'block';
-    tocRecentList.innerHTML = recent.map(idx => {
-      const ch = chapters[idx];
-      if (!ch) return '';
-      return `<div class="toc-recent-item" data-idx="${idx}">
-        <span class="toc-recent-dot"></span>
-        <span class="toc-recent-label">${escapeHtml(ch.title)}</span>
-      </div>`;
-    }).join('');
-
-    tocRecentList.querySelectorAll('.toc-recent-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const idx = Number((el as HTMLElement).dataset.idx);
-        if (!isNaN(idx)) goToChapter(idx);
-      });
-    });
-  }
 
   // ═══════════════════════════════════════════════════
   // Highlight & scroll
@@ -824,8 +736,6 @@ import '../styles/tokens.css';
     await saveProgress();
 
     currentIndex = index;
-    pushRecentHistory(index);
-    updateRecentReading();
     renderChapter(index);
     updateTopbarProgress();
     readContent.parentElement!.scrollTop = 0;
@@ -899,9 +809,7 @@ import '../styles/tokens.css';
     tocCount.textContent = String(chapters.length);
 
     // 加载偏好
-    loadFavorites();
     applyScrollMode();
-    updateRecentReading();
 
     // 恢复进度
     if (book.lastChapterId) {

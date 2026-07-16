@@ -9,7 +9,6 @@
  * 新增功能：
  * - 章节搜索（实时过滤）
  * - 分页/普通滚动切换
- * - 收藏章节（⭐）
  * - 最近阅读区域
  * - 右键上下文菜单
  * - 拖拽下滑关闭（移动端）
@@ -50,13 +49,6 @@
     <span class="toc-search-count" id="toc-search-count"></span>
   </div>
 
-  <!-- 最近阅读（>0 时显示） -->
-  <div class="toc-recent" id="toc-recent" style="display:none;">
-    <div class="toc-recent-header">
-      <span class="toc-recent-title">最近阅读</span>
-    </div>
-    <div class="toc-recent-list" id="toc-recent-list"></div>
-  </div>
 
   <!-- 导航滚动区 -->
   <nav class="toc-nav" id="toc-nav" aria-label="章节目录">
@@ -83,7 +75,6 @@
 <!-- 右键上下文菜单 -->
 <div class="toc-context-menu" id="toc-context-menu" style="display:none;">
   <button data-action="copy-title">复制标题</button>
-  <button data-action="favorite">⭐ 收藏</button>
   <button data-action="bookmark">🔖 添加书签</button>
 </div>
 
@@ -148,20 +139,6 @@
   .toc-search-count { font-family: var(--font-mono, monospace); font-size: 10px; color: #6B7280; display: none; }
   .toc-search-count.visible { display: inline; }
 
-  /* ═══════════════════════════════════
-     Recent reading
-     ═══════════════════════════════════ */
-  .toc-recent { border-bottom: 1px solid var(--border, #30363d); flex-shrink: 0; }
-  .toc-recent-header { padding: 6px 16px; }
-  .toc-recent-title { font-size: 10px; font-family: var(--font-mono, monospace); letter-spacing: .06em; color: #6B7280; text-transform: uppercase; }
-  .toc-recent-list { padding: 2px 0; }
-  .toc-recent-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 16px; cursor: pointer; transition: background .15s;
-  }
-  .toc-recent-item:hover { background: rgba(255,255,255,.06); }
-  .toc-recent-dot { width: 6px; height: 6px; border-radius: 50%; background: #60A5FA; flex-shrink: 0; }
-  .toc-recent-label { font-size: 13px; color: #9CA3AF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ═══════════════════════════════════
      Tree
@@ -234,16 +211,6 @@
   }
   .toc-row.active .toc-progress-dot { display: block; }
 
-  /* ── Favorite star ── */
-  .toc-fav {
-    display: none; align-items: center; justify-content: center;
-    width: 24px; height: 24px; flex-shrink: 0; margin-left: 4px;
-    border: none; background: none; color: #6B7280; cursor: pointer;
-    border-radius: 4px; font-size: 12px; transition: color .15s;
-  }
-  .toc-row:hover .toc-fav { display: flex; }
-  .toc-fav.favorited { display: flex; color: #F59E0B; }
-  .toc-fav:hover { background: rgba(255,255,255,.08); }
 
   /* ── Collapse ── */
   .toc-children { overflow: hidden; }
