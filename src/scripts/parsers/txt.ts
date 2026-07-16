@@ -1,40 +1,85 @@
 /**
  * TXT 文件解析器
- * 支持多种章节标题格式，自动清理多余符号
+ * 支持多种内置章节标题格式 + 用户自定义正则。
  */
 
-/** 章节标题检测规则（按优先级排序） */
-const CHAPTER_PATTERNS: RegExp[] = [
-  /^第[零一二三四五六七八九十百千万\d]+[章节回集部卷篇]/,
-  /^Chapter\s+\d+/i,
-  /^CHAPTER\s+[IVXLCDM]+/i,
-  /^[（(]\s*\d+\s*[)）]/,
-  /^\d+\s*[、.．。]\s*\S/,
-  /^【[^】]{1,30}】/,
-  /^［[^］]{1,30}］/,
-  /^[■◆●▶]\s*\S/,
-  /^={2,}\s*\S.*\S\s*={2,}$/,
-  /^-{2,}\s*\S.*\S\s*-{2,}$/,
-  /^\*{2,}\s*\S.*\S\s*\*{2,}$/,
+/** 内置章节标题检测规则（按优先级排序） */
+const BUILTIN_PATTERNS: string[] = [
+  String.raw`^第[零一二三四五六七八九十百千万\d]+[章节回集部卷篇]`,
+  String.raw`^\s*第[零一二三四五六七八九十百千万\d]+[章节回集部卷篇]`,
+  String.raw`^Chapter\s+\d+`,
+  String.raw`^CHAPTER\s+[IVXLCDM]+`,
+  String.raw`^[（(]\s*\d+\s*[)）]`,
+  String.raw`^\d+\s*[、.．。]\s*\S`,
+  String.raw`^【[^】]{1,30}】`,
+  String.raw`^［[^］]{1,30}］`,
+  String.raw`^[■◆●▶▼▲★☆▪▸►]\s*\S`,
+  String.raw`^={2,}\s*\S.*\S\s*={2,}$`,
+  String.raw`^-{2,}\s*\S.*\S\s*-{2,}$`,
+  String.raw`^\*{2,}\s*\S.*\S\s*\*{2,}$`,
+  String.raw`^[#＃]{1,4}\s+\S`,
+  String.raw`^第[零一二三四五六七八九十百千万\d]+[节]`,
+  String.raw`^序[章节言]?\s*$`,
+  String.raw`^楔子\s*$`,
+  String.raw`^尾声\s*$`,
+  String.raw`^后记\s*$`,
+  String.raw`^番外.{0,20}$`,
+  String.raw`^(内容|引言|简介|前言|附录)(\s|$)`,
 ];
 
 /**
- * 清理标题中的装饰符号
+ * 从 localStorage 读取用户自定义正则，或使用内置规则。
+ * 每行一个正则表达式。无效的行被忽略。
+ */
+function getPatterns(): RegExp[] {
+  try {
+    const raw = localStorage.getItem('reader-txt-patterns');
+    if (raw) {
+      const lines = raw.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && !l.startsWith('#') && !l.startsWith('//'));
+      const regs: RegExp[] = [];
+      for (const line of lines) {
+        try {
+          regs.push(new RegExp(line, 'i'));
+        } catch { /* invalid regex, skip */ }
+      }
+      if (regs.length > 0) return regs;
+    }
+  } catch { /* ignore */ }
+
+  // Fallback to built-in
+  return BUILTIN_PATTERNS.map(p => new RegExp(p, 'i'));
+}
+
+/**
+ * 清理标题中的装饰符号。
+ * "===第一章 小小灵娥===" → "第一章 小小灵娥"
+ * "【第三章 筑基】" → "第三章 筑基"
+ * "## 第四章" → "第四章"
  */
 function cleanTitle(raw: string): string {
   return raw
-    .replace(/^[=\-*#＝－＊＃\s]+/, '')
-    .replace(/[=\-*#＝－＊＃\s]+$/, '')
-    .replace(/^[【［（(]\s*/, '')
-    .replace(/\s*[】］）)]\s*$/, '')
+    .replace(/^[=\-*#＝－＊＃●◆■▶▼▲★☆\s]+/, '')
+    .replace(/[=\-*#＝－＊＃●◆■▶▼▲★☆\s]+$/, '')
+    .replace(/^[【［（({]\s*/, '')
+    .replace(/\s*[】］）)}]\s*$/, '')
+    .replace(/^[#＃]{1,4}\s*/, '')
+    .replace(/^(序[章节言]?|楔子|尾声|后记|番外)$/, (m) => m)
     .trim();
 }
 
-/** 检测一行是否为章节标题 */
-function isChapterTitle(line: string): boolean {
+/** 检测是否为章节标题 */
+function isChapterTitle(line: string, patterns: RegExp[]): boolean {
   const trimmed = line.trim();
-  if (trimmed.length === 0 || trimmed.length > 60) return false;
-  return CHAPTER_PATTERNS.some(p => p.test(trimmed));
+  if (trimmed.length === 0 || trimmed.length > 80) return false;
+  return patterns.some(p => p.test(trimmed));
+}
+
+/** HTML 转义 */
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return text.replace(/[&<>"']/g, ch => map[ch] ?? ch);
 }
 
 /** 将纯文本段落转为 HTML */
@@ -45,7 +90,7 @@ function wrapParagraphs(text: string): string {
     .filter(Boolean)
     .map(para => {
       const lines = para.split('\n').map(l => l.trim()).filter(Boolean);
-      return `<p>${lines.join('<br>')}</p>`;
+      return `<p>${lines.map(escapeHtml).join('<br>')}</p>`;
     })
     .join('\n');
 }
@@ -58,10 +103,12 @@ export interface ParsedTxt {
 }
 
 /**
- * 将 TXT 文件内容解析为结构化章节
+ * 将 TXT 文件内容解析为结构化章节。
  */
 export function parseTxt(text: string, filename: string): ParsedTxt {
-  // 1. 统一换行符，过滤连续空行
+  const patterns = getPatterns();
+
+  // 1. 统一换行符
   const normalized = text
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -72,8 +119,9 @@ export function parseTxt(text: string, filename: string): ParsedTxt {
   // 2. 提取书名
   const rawTitle = filename
     .replace(/\.(txt|TXT)$/, '')
-    .replace(/[_\-]?(精校版?|校对版?|全本|完本|完结)$/g, '')
+    .replace(/[_\-]?(精校版?|校对版?|全本|完本|完结|v\d+\.?\d*|V\d+\.?\d*)$/g, '')
     .replace(/^[《【]|[》】]$/g, '')
+    .replace(/[_\-]+/g, ' ')
     .trim();
 
   // 3. 分章
@@ -83,7 +131,7 @@ export function parseTxt(text: string, filename: string): ParsedTxt {
   let hasDetectedChapters = false;
 
   for (const line of lines) {
-    if (isChapterTitle(line)) {
+    if (isChapterTitle(line, patterns)) {
       if (currentLines.some(l => l.trim())) {
         chapterChunks.push({ title: currentTitle, lines: currentLines });
       }
@@ -98,10 +146,10 @@ export function parseTxt(text: string, filename: string): ParsedTxt {
     chapterChunks.push({ title: currentTitle, lines: currentLines });
   }
 
-  // 4. 未检测到章节：按 3000 字自动分段
+  // 4. 未检测到章节 → 自动分段
   if (!hasDetectedChapters || chapterChunks.length <= 1) {
     const allText = lines.join('\n');
-    const segSize = 3000;
+    const segSize = Number(localStorage.getItem('reader-txt-split')) || 3000;
     const segs: Array<{ title: string; content: string; index: number }> = [];
     for (let i = 0; i < allText.length; i += segSize) {
       const seg = allText.slice(i, i + segSize);
@@ -110,7 +158,7 @@ export function parseTxt(text: string, filename: string): ParsedTxt {
     return { title: rawTitle, author: '未知作者', chapters: segs };
   }
 
-  // 5. 将行数组转为 HTML 段落
+  // 5. 生成最终结果
   return {
     title: rawTitle,
     author: '未知作者',

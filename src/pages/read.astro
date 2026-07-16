@@ -1041,11 +1041,26 @@ import '../styles/tokens.css';
   });
 
   document.getElementById('btn-style')!.addEventListener('click', () => {
-    stylePanel.classList.toggle('open');
+    if (window.innerWidth <= 768) {
+      // 移动端：已打开则关闭，未打开则打开
+      if (stylePanel.classList.contains('open')) {
+        stylePanel.classList.remove('open');
+      } else {
+        stylePanel.classList.add('open');
+      }
+    } else {
+      // 桌面端：切换 display 可见性
+      const hidden = stylePanel.style.display === 'none';
+      stylePanel.style.display = hidden ? 'flex' : 'none';
+    }
   });
 
   document.getElementById('btn-style-close')!.addEventListener('click', () => {
-    stylePanel.classList.remove('open');
+    if (window.innerWidth <= 768) {
+      stylePanel.classList.remove('open');
+    } else {
+      stylePanel.style.display = 'none';
+    }
   });
 
   // ── 键盘快捷键 ──

@@ -1,0 +1,399 @@
+---
+/**
+ * GlobalSettings — 全局设置面板
+ * 抽屉式弹窗，包含四个 Tab: 通用 / TXT / 书架 / 关于
+ */
+---
+
+<div class="gs-backdrop" id="gs-backdrop" aria-hidden="true"></div>
+
+<aside class="gs-panel" id="gs-panel" role="dialog" aria-label="全局设置">
+  <!-- 移动端拖拽手柄 -->
+  <div class="gs-drag-handle" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <div class="gs-header">
+    <span class="gs-title">设置</span>
+    <button class="gs-close" id="gs-close" aria-label="关闭">✕</button>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="gs-tabs">
+    <button class="gs-tab active" data-tab="general">通用</button>
+    <button class="gs-tab" data-tab="txt">TXT</button>
+    <button class="gs-tab" data-tab="shelf">书架</button>
+    <button class="gs-tab" data-tab="about">关于</button>
+  </div>
+
+  <!-- Tab: 通用 -->
+  <div class="gs-body" data-tab-content="general">
+    <div class="gs-section">
+      <span class="gs-section-title">主题</span>
+      <div class="gs-row">
+        <span class="gs-label">默认主题</span>
+        <div class="gs-theme-grid" id="gs-theme-grid">
+          <button class="gs-theme-swatch" data-theme="dark" aria-label="暗黑">
+            <span class="gs-swatch-color" style="background:#0d1117;border:1px solid var(--border);"></span>
+            <span>暗黑</span>
+          </button>
+          <button class="gs-theme-swatch" data-theme="light" aria-label="明亮">
+            <span class="gs-swatch-color" style="background:#fff;border:1px solid #d0d7de;"></span>
+            <span>明亮</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="gs-section">
+      <span class="gs-section-title">行为</span>
+      <div class="gs-row">
+        <span class="gs-label">自动跟随系统主题</span>
+        <label class="gs-toggle"><input type="checkbox" id="gs-auto-theme" checked /><span class="gs-toggle-slider"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: TXT -->
+  <div class="gs-body" data-tab-content="txt" style="display:none;">
+    <div class="gs-section">
+      <span class="gs-section-title">章节检测</span>
+      <p class="gs-desc">自定义正则表达式，每行一个。匹配的行会被识别为章节标题。留空则使用内置规则。</p>
+      <textarea id="gs-txt-patterns" class="gs-textarea" rows="6"
+        placeholder="^第[零一二三四五六七八九十百千万\d]+[章节回集部卷篇]
+^Chapter\s+\d+
+^[（(]\s*\d+\s*[)）]
+^\d+\s*[、.．。]\s*\S"
+      ></textarea>
+      <div class="gs-hint">支持 JavaScript 正则语法。修改后新导入的 TXT 文件生效。</div>
+    </div>
+    <div class="gs-section">
+      <span class="gs-section-title">自动分段</span>
+      <div class="gs-row">
+        <span class="gs-label">自动分段阈值（字）</span>
+        <input type="number" id="gs-txt-split" class="gs-input-num" min="1000" max="20000" step="500" value="3000" />
+      </div>
+      <p class="gs-desc">无法检测到章节时，按此字数自动切分段落。</p>
+    </div>
+  </div>
+
+  <!-- Tab: 书架 -->
+  <div class="gs-body" data-tab-content="shelf" style="display:none;">
+    <div class="gs-section">
+      <span class="gs-section-title">卡片大小</span>
+      <div class="gs-row">
+        <span class="gs-label">显示模式</span>
+        <div class="gs-btn-group" id="gs-size-group">
+          <button class="gs-btn-opt active" data-size="medium">中</button>
+          <button class="gs-btn-opt" data-size="small">小</button>
+          <button class="gs-btn-opt" data-size="large">大</button>
+        </div>
+      </div>
+      <p class="gs-desc">调整书架卡片在屏幕中的显示尺寸比例。</p>
+    </div>
+  </div>
+
+  <!-- Tab: 关于 -->
+  <div class="gs-body" data-tab-content="about" style="display:none;">
+    <div class="gs-section">
+      <span class="gs-section-title">Reader — 极客书房</span>
+      <div class="gs-about">
+        <p>极客风格电子书阅读器，支持 EPUB / TXT。</p>
+        <p>PWA 离线可用，数据完全存储在浏览器本地。</p>
+        <div class="gs-about-meta">
+          <span>版本 2.0</span>
+          <span>基于 Astro 5 + TypeScript</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="gs-footer">
+    <button class="gs-btn gs-btn--primary" id="gs-save">保存设置</button>
+  </div>
+</aside>
+
+<style>
+  .gs-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.5); z-index: 3999;
+  }
+  .gs-panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 360px; max-width: 90vw;
+    background: #181A1F; border-left: 1px solid var(--border,#30363d);
+    z-index: 4000; display: none; flex-direction: column;
+    transform: translateX(100%);
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    box-shadow: -4px 0 24px rgba(0,0,0,.4);
+  }
+  .gs-panel.open { transform: translateX(0); }
+  .gs-backdrop.show, .gs-panel.open { display: block; }
+  .gs-panel.open { display: flex; }
+
+  .gs-drag-handle {
+    display: none; width: 32px; height: 4px; margin: 8px auto 0;
+    border-radius: 2px; background: rgba(255,255,255,.2);
+  }
+
+  /* Header */
+  .gs-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border,#30363d);
+  }
+  .gs-title { font-size: 15px; font-weight: 600; color: #E5E7EB; }
+  .gs-close {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border: none; border-radius: 5px;
+    background: transparent; color: #6B7280; cursor: pointer;
+    font-size: 14px; transition: background .15s,color .15s;
+  }
+  .gs-close:hover { background: rgba(255,255,255,.08); color: #E5E7EB; }
+
+  /* Tabs */
+  .gs-tabs {
+    display: flex; border-bottom: 1px solid var(--border,#30363d);
+    padding: 0 16px; flex-shrink: 0;
+  }
+  .gs-tab {
+    padding: 8px 14px; border: none; background: transparent;
+    color: #6B7280; font-size: 13px; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: all .15s;
+    font-family: inherit;
+  }
+  .gs-tab:hover { color: #E5E7EB; }
+  .gs-tab.active { color: #60A5FA; border-bottom-color: #60A5FA; }
+
+  /* Body */
+  .gs-body {
+    flex: 1; overflow-y: auto; padding: 16px;
+  }
+  .gs-body::-webkit-scrollbar { width: 6px; }
+  .gs-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
+
+  .gs-section { margin-bottom: 20px; }
+  .gs-section-title {
+    display: block; font-size: 11px; font-family: var(--font-mono,monospace);
+    letter-spacing: .06em; color: #6B7280; text-transform: uppercase;
+    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .gs-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .gs-label { font-size: 13px; color: #9CA3AF; }
+  .gs-desc { font-size: 11px; color: #4B5563; margin-top: 4px; line-height: 1.5; }
+  .gs-hint { font-size: 10px; color: #4B5563; margin-top: 4px; font-family: var(--font-mono,monospace); }
+
+  /* Theme swatches */
+  .gs-theme-grid { display: flex; gap: 6px; }
+  .gs-theme-swatch {
+    display: flex; align-items: center; gap: 4px; padding: 6px 10px;
+    border: 1px solid var(--border,#30363d); border-radius: 5px;
+    background: rgba(255,255,255,.04); color: #9CA3AF; cursor: pointer;
+    font-size: 12px; font-family: inherit; transition: all .15s;
+  }
+  .gs-theme-swatch:hover { border-color: #4B5563; }
+  .gs-theme-swatch.active { border-color: #60A5FA; color: #60A5FA; }
+  .gs-swatch-color { width: 16px; height: 16px; border-radius: 3px; display: block; flex-shrink: 0; }
+
+  /* Textarea */
+  .gs-textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border,#30363d);
+    border-radius: 5px; background: rgba(255,255,255,.04); color: #E5E7EB;
+    font-family: var(--font-mono,monospace); font-size: 12px; line-height: 1.6;
+    resize: vertical; outline: none;
+  }
+  .gs-textarea:focus { border-color: #60A5FA; }
+  .gs-textarea::placeholder { color: #374151; }
+
+  .gs-input-num {
+    width: 80px; padding: 4px 8px; border: 1px solid var(--border,#30363d);
+    border-radius: 4px; background: rgba(255,255,255,.04); color: #E5E7EB;
+    font-family: var(--font-mono,monospace); font-size: 12px; outline: none; text-align: center;
+  }
+  .gs-input-num:focus { border-color: #60A5FA; }
+
+  /* Button group */
+  .gs-btn-group { display: flex; gap: 2px; background: rgba(255,255,255,.04); border: 1px solid var(--border,#30363d); border-radius: 5px; padding: 2px; }
+  .gs-btn-opt {
+    padding: 4px 16px; border: 1px solid transparent; border-radius: 3px;
+    background: transparent; color: #9CA3AF; cursor: pointer;
+    font-size: 13px; font-family: inherit; transition: all .15s;
+  }
+  .gs-btn-opt:hover { color: #E5E7EB; }
+  .gs-btn-opt.active { background: #1F2937; border-color: #60A5FA; color: #60A5FA; }
+
+  /* Toggle */
+  .gs-toggle { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; }
+  .gs-toggle input { opacity: 0; width: 0; height: 0; }
+  .gs-toggle-slider {
+    position: absolute; inset: 0; background: rgba(255,255,255,.06);
+    border: 1px solid var(--border,#30363d); border-radius: 10px; transition: all .15s;
+  }
+  .gs-toggle-slider::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #6B7280; transition: all .15s;
+  }
+  .gs-toggle input:checked + .gs-toggle-slider { background: #2563EB; border-color: #2563EB; }
+  .gs-toggle input:checked + .gs-toggle-slider::after { background: #fff; transform: translateX(16px); }
+
+  /* About */
+  .gs-about { font-size: 13px; color: #9CA3AF; line-height: 1.8; }
+  .gs-about-meta { display: flex; gap: 16px; margin-top: 12px; font-family: var(--font-mono,monospace); font-size: 10px; color: #4B5563; }
+
+  /* Footer */
+  .gs-footer { padding: 12px 16px; border-top: 1px solid var(--border,#30363d); flex-shrink: 0; }
+  .gs-btn {
+    width: 100%; padding: 8px; border: 1px solid var(--border,#30363d);
+    border-radius: 5px; background: transparent; color: #9CA3AF;
+    font-family: var(--font-mono,monospace); font-size: 12px; letter-spacing: .06em;
+    cursor: pointer; transition: all .15s;
+  }
+  .gs-btn:hover { border-color: #4B5563; color: #E5E7EB; }
+  .gs-btn--primary { border-color: #2563EB; color: #60A5FA; }
+  .gs-btn--primary:hover { background: rgba(37,99,235,.1); }
+
+  @media (max-width:768px) {
+    .gs-panel { width: 85vw; }
+    .gs-drag-handle { display: block; }
+  }
+</style>
+
+<script>
+  const G = {
+    panel: document.getElementById('gs-panel')!,
+    backdrop: document.getElementById('gs-backdrop')!,
+    close: document.getElementById('gs-close')!,
+    save: document.getElementById('gs-save')!,
+    tabBtns: document.querySelectorAll('.gs-tab'),
+    tabPanes: document.querySelectorAll('[data-tab-content]'),
+    themeGrid: document.getElementById('gs-theme-grid')!,
+    autoThemeCheckbox: document.getElementById('gs-auto-theme') as HTMLInputElement,
+    txtPatterns: document.getElementById('gs-txt-patterns') as HTMLTextAreaElement,
+    txtSplit: document.getElementById('gs-txt-split') as HTMLInputElement,
+    sizeGroup: document.getElementById('gs-size-group')!,
+  };
+
+  function open(): void {
+    G.panel.classList.add('open');
+    G.backdrop.classList.add('show');
+    syncUI();
+  }
+  function close(): void {
+    G.panel.classList.remove('open');
+    G.backdrop.classList.remove('show');
+  }
+
+  G.close.addEventListener('click', close);
+  G.backdrop.addEventListener('click', close);
+
+  // Tabs
+  G.tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      G.tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab!;
+      G.tabPanes.forEach((p: any) => p.style.display = p.dataset.tabContent === tab ? 'block' : 'none');
+    });
+  });
+
+  // Save
+  G.save.addEventListener('click', () => {
+    saveAll();
+    close();
+  });
+
+  function syncUI(): void {
+    // Theme
+    const currentTheme = localStorage.getItem('reader-theme') || 'dark';
+    G.themeGrid.querySelectorAll('.gs-theme-swatch').forEach(el => {
+      el.classList.toggle('active', (el as HTMLElement).dataset.theme === currentTheme);
+    });
+
+    // Auto theme
+    G.autoThemeCheckbox.checked = localStorage.getItem('reader-theme') === null;
+
+    // TXT patterns
+    const customPatterns = localStorage.getItem('reader-txt-patterns');
+    if (customPatterns) {
+      G.txtPatterns.value = customPatterns;
+    } else {
+      G.txtPatterns.value = '';
+    }
+
+    // TXT split
+    G.txtSplit.value = localStorage.getItem('reader-txt-split') || '3000';
+
+    // Shelf size
+    const shelfSize = localStorage.getItem('reader-shelf-size') || 'medium';
+    G.sizeGroup.querySelectorAll('.gs-btn-opt').forEach(el => {
+      el.classList.toggle('active', (el as HTMLElement).dataset.size === shelfSize);
+    });
+  }
+
+  function saveAll(): void {
+    // Theme
+    const activeSwatch = G.themeGrid.querySelector('.gs-theme-swatch.active') as HTMLElement | null;
+    if (G.autoThemeCheckbox.checked) {
+      localStorage.removeItem('reader-theme');
+    } else if (activeSwatch) {
+      localStorage.setItem('reader-theme', activeSwatch.dataset.theme!);
+    }
+
+    // TXT patterns
+    const patterns = G.txtPatterns.value.trim();
+    if (patterns) {
+      localStorage.setItem('reader-txt-patterns', patterns);
+    } else {
+      localStorage.removeItem('reader-txt-patterns');
+    }
+
+    // TXT split
+    localStorage.setItem('reader-txt-split', G.txtSplit.value);
+
+    // Shelf size
+    const activeSize = G.sizeGroup.querySelector('.gs-btn-opt.active') as HTMLElement | null;
+    if (activeSize) {
+      localStorage.setItem('reader-shelf-size', activeSize.dataset.size!);
+    }
+
+    // Apply changes
+    applySettings();
+  }
+
+  function applySettings(): void {
+    const shelfSize = localStorage.getItem('reader-shelf-size') || 'medium';
+    document.documentElement.setAttribute('data-shelf-size', shelfSize);
+
+    // Re-apply theme
+    const theme = localStorage.getItem('reader-theme');
+    if (theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+  }
+
+  // Theme swatch clicks (immediate preview)
+  G.themeGrid.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.gs-theme-swatch') as HTMLElement | null;
+    if (!btn) return;
+    const theme = btn.dataset.theme!;
+    document.documentElement.setAttribute('data-theme', theme);
+    G.themeGrid.querySelectorAll('.gs-theme-swatch').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+    G.autoThemeCheckbox.checked = false;
+  });
+
+  // Shelf size preview
+  G.sizeGroup.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.gs-btn-opt') as HTMLElement | null;
+    if (!btn) return;
+    G.sizeGroup.querySelectorAll('.gs-btn-opt').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+    document.documentElement.setAttribute('data-shelf-size', btn.dataset.size!);
+  });
+
+  // Init
+  applySettings();
+
+  // Expose
+  (window as any).__gsOpen = open;
+  (window as any).__gsClose = close;
+</script>

@@ -5,6 +5,7 @@
  */
 import ImportBtn from '../components/shelf/ImportBtn.astro';
 import MetaEditor from '../components/shelf/MetaEditor.astro';
+import GlobalSettings from '../components/shelf/GlobalSettings.astro';
 import '../styles/tokens.css';
 ---
 
@@ -44,6 +45,11 @@ import '../styles/tokens.css';
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
           </svg>
         </button>
+        <button class="theme-toggle" id="btn-global-settings" aria-label="全局设置" title="全局设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
         <ImportBtn />
       </div>
     </header>
@@ -80,6 +86,7 @@ import '../styles/tokens.css';
     </main>
 
     <MetaEditor />
+    <GlobalSettings />
   </div>
 
   <script>
@@ -204,11 +211,37 @@ import '../styles/tokens.css';
     margin-bottom: var(--space-4);
   }
 
+  /* ── 书架卡片大小（三种模式，按 1525×2140 像素比例缩放） ── */
   .shelf-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: var(--space-4);
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
+
+  /* 小模式: ~120px 列宽 */
+  [data-shelf-size="small"] .shelf-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  [data-shelf-size="small"] .book-title { font-size: 12px; }
+  [data-shelf-size="small"] .book-info { padding: var(--space-2); gap: 2px; }
+  [data-shelf-size="small"] .book-cover-letter { font-size: 32px; }
+  [data-shelf-size="small"] .book-meta { font-size: 9px; }
+  [data-shelf-size="small"] .book-progress-text { font-size: 9px; }
+
+  /* 中模式（默认）: ~160px 列宽 */
+  [data-shelf-size="medium"] .shelf-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+
+  /* 大模式: ~220px 列宽 */
+  [data-shelf-size="large"] .shelf-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+  [data-shelf-size="large"] .book-title { font-size: 16px; }
+  [data-shelf-size="large"] .book-info { padding: var(--space-4); gap: var(--space-2); }
+  [data-shelf-size="large"] .book-cover-letter { font-size: 64px; }
+  [data-shelf-size="large"] .book-meta { font-size: 12px; }
+  [data-shelf-size="large"] .book-progress-text { font-size: 12px; }
 
   /* ── 空状态 ── */
   .shelf-empty {
@@ -676,6 +709,17 @@ import '../styles/tokens.css';
   });
 
   themeToggle.addEventListener('click', toggleTheme);
+
+  // ── 全局设置按钮 ──
+  document.getElementById('btn-global-settings')!.addEventListener('click', () => {
+    (window as any).__gsOpen?.();
+  });
+
+  // ── 书架大小初始化 ──
+  const shelfSize = localStorage.getItem('reader-shelf-size');
+  if (shelfSize) {
+    document.documentElement.setAttribute('data-shelf-size', shelfSize);
+  }
 
   // 初始渲染
   renderShelf();
